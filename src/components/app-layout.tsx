@@ -6,18 +6,16 @@ import { Button } from "@/components/ui/button";
 interface AppLayoutProps {
   children: React.ReactNode;
   onNewChat?: () => void;
+  isLandingPage?: boolean;
 }
 
-export function AppLayout({ children, onNewChat }: AppLayoutProps) {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLayoutProps) {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [selectedPlant, setSelectedPlant] = useState("plant_alpha");
+  const [selectedPlant, setSelectedPlant] = useState("demo_plant");
 
-  const userPlants = [
-    { id: "plant_alpha", name: "Plant Alpha" },
-    { id: "plant_beta", name: "Plant Beta" },
-    { id: "plant_charlie", name: "Plant Charlie" },
-  ];
+  // For MVP: Only show Demo Plant until user adds plants via Settings
+  const userPlants = [{ id: "demo_plant", name: "Demo Plant" }];
 
   useEffect(() => {
     const checkMobile = () => {
@@ -36,7 +34,9 @@ export function AppLayout({ children, onNewChat }: AppLayoutProps) {
   };
 
   const handleChatClick = () => {
-    console.log("Chat clicked, onNewChat:", onNewChat);
+    // Disable functionality but don't change appearance on landing page
+    if (isLandingPage) return;
+    
     if (onNewChat) {
       onNewChat();
     }
@@ -179,6 +179,7 @@ export function AppLayout({ children, onNewChat }: AppLayoutProps) {
         {/* Full Drawer Content */}
         {isDrawerOpen && (
           <>
+            {/* Header with logo and plant selector */}
             <div className="pt-15 pb-4 px-4 sm:p-4 border-b border-gray-200">
               <div className="mb-4 flex justify-start">
                 <svg
@@ -204,34 +205,19 @@ export function AppLayout({ children, onNewChat }: AppLayoutProps) {
                   </text>
                 </svg>
               </div>
-              <div className="relative">
-                <select
-                  value={selectedPlant}
-                  onChange={(e) => setSelectedPlant(e.target.value)}
-                  className="w-full text-xs sm:text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-3 sm:px-3 sm:py-2.5 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {userPlants.map((plant) => (
-                    <option key={plant.id} value={plant.id}>
-                      {plant.name}
-                    </option>
-                  ))}
-                </select>
-                <svg
-                  className="absolute right-2 sm:right-3 top-1/2 transform -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-gray-400 pointer-events-none"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+              
+              {/* Simple plant display - no dropdown until multiple plants exist */}
+              <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2.5">
+                Demo Plant
               </div>
             </div>
 
+            {/* Navigation */}
             <div className="p-3 border-b border-gray-200">
               <div className="space-y-1">
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-sm h-9 bg-blue-50 text-blue-700"
+                  className="w-full justify-start text-sm h-9 bg-blue-50 text-blue-700 hover:bg-blue-100"
                   onClick={handleChatClick}
                 >
                   Chat
@@ -248,25 +234,37 @@ export function AppLayout({ children, onNewChat }: AppLayoutProps) {
               </div>
             </div>
 
+            {/* Recent Data section */}
             <div className="flex-1 p-3">
               <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
                 Recent Data
               </h3>
-              <div className="space-y-2">
-                <div className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded">
-                  Production Data - Sep 18, 2:14 PM
-                </div>
-                <div className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded">
-                  Quality Report - Sep 18, 9:30 AM
-                </div>
-              </div>
+              
+              {!isLandingPage ? (
+                <>
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded">
+                      Production Data - Sep 18, 2:14 PM
+                    </div>
+                    <div className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded">
+                      Quality Report - Sep 18, 9:30 AM
+                    </div>
+                  </div>
 
-              <div className="mt-6 text-center">
-                <p className="text-xs text-gray-400 mb-2">No recent uploads</p>
-                <p className="text-xs text-gray-400">Upload data to get started</p>
-              </div>
+                  <div className="mt-6 text-center">
+                    <p className="text-xs text-gray-400 mb-2">No recent uploads</p>
+                    <p className="text-xs text-gray-400">Upload data to get started</p>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center">
+                  <p className="text-xs text-gray-400 mb-2">No recent uploads</p>
+                  <p className="text-xs text-gray-400">Upload data to get started</p>
+                </div>
+              )}
             </div>
 
+            {/* User Profile Section */}
             <div className="p-3 border-t border-gray-200">
               <button
                 onClick={handleUserProfileClick}

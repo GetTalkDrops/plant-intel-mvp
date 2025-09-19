@@ -62,94 +62,25 @@ export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProp
             className="w-60 h-18 sm:w-72 sm:h-22"
             xmlns="http://www.w3.org/2000/svg"
           >
-            {/* Gear/dot pattern icon */}
             <g transform="translate(20, 30)">
-              {/* Center circle */}
-              <circle
-                cx="0"
-                cy="0"
-                r="3"
-                fill="currentColor"
-                className="text-blue-600"
-              />
-
-              {/* Surrounding dots in gear pattern */}
-              <circle
-                cx="8"
-                cy="0"
-                r="2"
-                fill="currentColor"
-                className="text-blue-600"
-              />
-              <circle
-                cx="-8"
-                cy="0"
-                r="2"
-                fill="currentColor"
-                className="text-blue-600"
-              />
-              <circle
-                cx="0"
-                cy="8"
-                r="2"
-                fill="currentColor"
-                className="text-blue-600"
-              />
-              <circle
-                cx="0"
-                cy="-8"
-                r="2"
-                fill="currentColor"
-                className="text-blue-600"
-              />
-              <circle
-                cx="6"
-                cy="6"
-                r="1.5"
-                fill="currentColor"
-                className="text-blue-600"
-              />
-              <circle
-                cx="-6"
-                cy="6"
-                r="1.5"
-                fill="currentColor"
-                className="text-blue-600"
-              />
-              <circle
-                cx="6"
-                cy="-6"
-                r="1.5"
-                fill="currentColor"
-                className="text-blue-600"
-              />
-              <circle
-                cx="-6"
-                cy="-6"
-                r="1.5"
-                fill="currentColor"
-                className="text-blue-600"
-              />
+              <circle cx="0" cy="0" r="3" fill="currentColor" className="text-blue-600" />
+              <circle cx="8" cy="0" r="2" fill="currentColor" className="text-blue-600" />
+              <circle cx="-8" cy="0" r="2" fill="currentColor" className="text-blue-600" />
+              <circle cx="0" cy="8" r="2" fill="currentColor" className="text-blue-600" />
+              <circle cx="0" cy="-8" r="2" fill="currentColor" className="text-blue-600" />
+              <circle cx="6" cy="6" r="1.5" fill="currentColor" className="text-blue-600" />
+              <circle cx="-6" cy="6" r="1.5" fill="currentColor" className="text-blue-600" />
+              <circle cx="6" cy="-6" r="1.5" fill="currentColor" className="text-blue-600" />
+              <circle cx="-6" cy="-6" r="1.5" fill="currentColor" className="text-blue-600" />
             </g>
-
-            {/* PLANT INTEL text */}
-            <text
-              x="50"
-              y="37"
-              fontFamily="Inter, sans-serif"
-              fontSize="18"
-              fontWeight="700"
-              fill="currentColor"
-              className="text-gray-900"
-            >
+            <text x="50" y="37" fontFamily="Inter, sans-serif" fontSize="18" fontWeight="700" fill="currentColor" className="text-gray-900">
               PLANT INTEL
             </text>
           </svg>
         </h1>
         <div className="text-sm sm:text-base">
           <p className="text-gray-600 mb-2">
-            Upload your production data to get intelligent manufacturing
-            insights
+            Upload your production data to get intelligent manufacturing insights
           </p>
           <p className="text-xs sm:text-sm text-gray-500">
             Supports upload of ERP exports, MES data, and manufacturing reports
@@ -243,14 +174,14 @@ export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProp
         </div>
       </Card>
 
-      {/* What to Expect Section - Compact & Neutral */}
+      {/* What to Expect Section */}
       <div className="w-full max-w-2xl mt-8">
         <h3 className="text-sm sm:text-base font-semibold text-gray-800 mb-3 text-center">
           Uncover key insights from your data:
         </h3>
         <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-xs text-gray-600 px-4">
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 flex-shrink-0">
+            <div className="w-5 h-5 flex-shrink-0">
               <svg
                 className="w-full h-full"
                 fill="none"
@@ -269,7 +200,7 @@ export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProp
           </div>
 
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 flex-shrink-0">
+            <div className="w-5 h-5 flex-shrink-0">
               <svg
                 className="w-full h-full"
                 fill="none"
@@ -288,7 +219,7 @@ export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProp
           </div>
 
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 flex-shrink-0">
+            <div className="w-5 h-5 flex-shrink-0">
               <svg
                 className="w-full h-full"
                 fill="none"
@@ -307,7 +238,7 @@ export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProp
           </div>
 
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 flex-shrink-0">
+            <div className="w-5 h-5 flex-shrink-0">
               <svg
                 className="w-full h-full"
                 fill="none"

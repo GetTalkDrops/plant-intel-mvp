@@ -67,7 +67,7 @@ export default function Home() {
               setUploadedFiles((prev) => [fileName, ...prev]);
               setIsProcessing(false);
               setHasData(true);
-              setIsFreshChat(false); // File upload = not fresh chat
+              setIsFreshChat(false);
             }, 600);
           }
         }, step.duration);
@@ -80,13 +80,13 @@ export default function Home() {
   const handleChatStart = (message: string) => {
     setInitialChatMessage(message);
     setHasData(true);
-    setIsFreshChat(false); // Landing page chat = not fresh chat
+    setIsFreshChat(false);
   };
 
   const handleNewChat = () => {
     setInitialChatMessage("");
     setHasData(true);
-    setIsFreshChat(true); // Sidebar chat = fresh chat
+    setIsFreshChat(true);
     setChatKey(prev => prev + 1);
   };
 
@@ -118,8 +118,10 @@ export default function Home() {
     </div>
   );
 
+  const isLandingPage = !hasData && !isProcessing;
+
   return (
-    <AppLayout onNewChat={handleNewChat}>
+    <AppLayout onNewChat={handleNewChat} isLandingPage={isLandingPage}>
       {isProcessing ? (
         <ProcessingState />
       ) : hasData ? (
