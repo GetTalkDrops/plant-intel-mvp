@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 
 interface EmptyChatStateProps {
   onFileUpload: (file: File) => void;
+  onChatStart: (message: string) => void;
 }
 
-export function EmptyChatState({ onFileUpload }: EmptyChatStateProps) {
+export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [chatInput, setChatInput] = useState("");
 
@@ -45,11 +46,7 @@ export function EmptyChatState({ onFileUpload }: EmptyChatStateProps) {
   const handleChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (chatInput.trim()) {
-      // TODO: Connect to demo Supabase database
-      // This will query the demo manufacturing scenarios based on user input
-      // and generate contextual responses from pre-built templates
-      console.log("Demo query:", chatInput);
-      setChatInput("");
+      onChatStart(chatInput.trim());
     }
   };
 

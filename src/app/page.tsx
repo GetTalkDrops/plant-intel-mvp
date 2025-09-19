@@ -11,12 +11,14 @@ export default function Home() {
   const [processingMessage, setProcessingMessage] = useState("");
   const [processingStep, setProcessingStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [initialChatMessage, setInitialChatMessage] = useState<string>("");
+  const [chatKey, setChatKey] = useState(0);
+  const [isFreshChat, setIsFreshChat] = useState(false);
 
   const handleFileUpload = (file: File) => {
     setIsProcessing(true);
     setProcessingStep(0);
 
-    // More refined processing sequence
     const processingSteps = [
       {
         message: "Uploading and validating file...",
@@ -55,7 +57,6 @@ export default function Home() {
           if (currentStep < processingSteps.length) {
             runNextStep();
           } else {
-            // Complete processing
             setTimeout(() => {
               const timestamp = new Date().toLocaleString();
               const fileName = `${file.name.replace(
@@ -66,6 +67,7 @@ export default function Home() {
               setUploadedFiles((prev) => [fileName, ...prev]);
               setIsProcessing(false);
               setHasData(true);
+              setIsFreshChat(false); // File upload = not fresh chat
             }, 600);
           }
         }, step.duration);
@@ -75,11 +77,22 @@ export default function Home() {
     runNextStep();
   };
 
-  // Enhanced processing state component
+  const handleChatStart = (message: string) => {
+    setInitialChatMessage(message);
+    setHasData(true);
+    setIsFreshChat(false); // Landing page chat = not fresh chat
+  };
+
+  const handleNewChat = () => {
+    setInitialChatMessage("");
+    setHasData(true);
+    setIsFreshChat(true); // Sidebar chat = fresh chat
+    setChatKey(prev => prev + 1);
+  };
+
   const ProcessingState = () => (
     <div className="flex flex-col items-center justify-center h-full p-6">
       <div className="text-center max-w-md">
-        {/* Progress indicator */}
         <div className="mb-6">
           <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <div className="flex justify-center space-x-2 mb-4">
@@ -106,13 +119,18 @@ export default function Home() {
   );
 
   return (
-    <AppLayout>
+    <AppLayout onNewChat={handleNewChat}>
       {isProcessing ? (
         <ProcessingState />
       ) : hasData ? (
-        <ChatInterface />
+        <ChatInterface 
+          key={chatKey}
+          initialMessage={initialChatMessage} 
+          onFileUpload={handleFileUpload}
+          isFreshChat={isFreshChat}
+        />
       ) : (
-        <EmptyChatState onFileUpload={handleFileUpload} />
+        <EmptyChatState onFileUpload={handleFileUpload} onChatStart={handleChatStart} />
       )}
     </AppLayout>
   );

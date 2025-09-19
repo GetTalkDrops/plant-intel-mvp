@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 
 interface AppLayoutProps {
   children: React.ReactNode;
+  onNewChat?: () => void;
 }
 
-export function AppLayout({ children }: AppLayoutProps) {
+export function AppLayout({ children, onNewChat }: AppLayoutProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlant, setSelectedPlant] = useState("plant_alpha");
 
-  // Mock user's authorized plants (later from auth)
   const userPlants = [
     { id: "plant_alpha", name: "Plant Alpha" },
     { id: "plant_beta", name: "Plant Beta" },
@@ -32,8 +32,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, []);
 
   const handleUserProfileClick = () => {
-    // TODO: Open auth modal or handle authentication
     console.log("User profile clicked - open auth");
+  };
+
+  const handleChatClick = () => {
+    console.log("Chat clicked, onNewChat:", onNewChat);
+    if (onNewChat) {
+      onNewChat();
+    }
   };
 
   return (
@@ -60,6 +66,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               title="Chat"
               aria-label="Chat"
+              onClick={handleChatClick}
             >
               <svg
                 className="w-5 h-5 text-blue-600"
@@ -71,7 +78,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                 />
               </svg>
             </button>
@@ -142,7 +149,6 @@ export function AppLayout({ children }: AppLayoutProps) {
               </svg>
             </button>
 
-            {/* User Profile Icon */}
             <div className="mt-auto">
               <button
                 onClick={handleUserProfileClick}
@@ -173,7 +179,6 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Full Drawer Content */}
         {isDrawerOpen && (
           <>
-            {/* Drawer Header with Plant Selector */}
             <div className="pt-15 pb-4 px-4 sm:p-4 border-b border-gray-200">
               <div className="mb-4 flex justify-start">
                 <svg
@@ -183,86 +188,18 @@ export function AppLayout({ children }: AppLayoutProps) {
                   className="w-38 h-11"
                   xmlns="http://www.w3.org/2000/svg"
                 >
-                  {/* Gear/dot pattern icon */}
                   <g transform="translate(20, 30)">
-                    {/* Center circle */}
-                    <circle
-                      cx="0"
-                      cy="0"
-                      r="3"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-
-                    {/* Surrounding dots in gear pattern */}
-                    <circle
-                      cx="8"
-                      cy="0"
-                      r="2"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="-8"
-                      cy="0"
-                      r="2"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="0"
-                      cy="8"
-                      r="2"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="0"
-                      cy="-8"
-                      r="2"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="6"
-                      cy="6"
-                      r="1.5"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="-6"
-                      cy="6"
-                      r="1.5"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="6"
-                      cy="-6"
-                      r="1.5"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="-6"
-                      cy="-6"
-                      r="1.5"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
+                    <circle cx="0" cy="0" r="3" fill="currentColor" className="text-blue-600" />
+                    <circle cx="8" cy="0" r="2" fill="currentColor" className="text-blue-600" />
+                    <circle cx="-8" cy="0" r="2" fill="currentColor" className="text-blue-600" />
+                    <circle cx="0" cy="8" r="2" fill="currentColor" className="text-blue-600" />
+                    <circle cx="0" cy="-8" r="2" fill="currentColor" className="text-blue-600" />
+                    <circle cx="6" cy="6" r="1.5" fill="currentColor" className="text-blue-600" />
+                    <circle cx="-6" cy="6" r="1.5" fill="currentColor" className="text-blue-600" />
+                    <circle cx="6" cy="-6" r="1.5" fill="currentColor" className="text-blue-600" />
+                    <circle cx="-6" cy="-6" r="1.5" fill="currentColor" className="text-blue-600" />
                   </g>
-
-                  {/* PLANT INTEL text */}
-                  <text
-                    x="50"
-                    y="37"
-                    fontFamily="Inter, sans-serif"
-                    fontSize="18"
-                    fontWeight="700"
-                    fill="currentColor"
-                    className="text-gray-800"
-                  >
+                  <text x="50" y="37" fontFamily="Inter, sans-serif" fontSize="18" fontWeight="700" fill="currentColor" className="text-gray-800">
                     PLANT INTEL
                   </text>
                 </svg>
@@ -285,47 +222,32 @@ export function AppLayout({ children }: AppLayoutProps) {
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
             </div>
 
-            {/* Navigation */}
             <div className="p-3 border-b border-gray-200">
               <div className="space-y-1">
                 <Button
                   variant="ghost"
                   className="w-full justify-start text-sm h-9 bg-blue-50 text-blue-700"
+                  onClick={handleChatClick}
                 >
                   Chat
                 </Button>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start text-sm h-9 text-gray-600"
-                >
+                <Button variant="ghost" className="w-full justify-start text-sm h-9 text-gray-600">
                   Alerts
                 </Button>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start text-sm h-9 text-gray-600"
-                >
+                <Button variant="ghost" className="w-full justify-start text-sm h-9 text-gray-600">
                   Reports
                 </Button>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start text-sm h-9 text-gray-600"
-                >
+                <Button variant="ghost" className="w-full justify-start text-sm h-9 text-gray-600">
                   Settings
                 </Button>
               </div>
             </div>
 
-            {/* Recent Data Uploads */}
             <div className="flex-1 p-3">
               <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
                 Recent Data
@@ -339,34 +261,20 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </div>
               </div>
 
-              {/* Empty state when no data */}
               <div className="mt-6 text-center">
                 <p className="text-xs text-gray-400 mb-2">No recent uploads</p>
-                <p className="text-xs text-gray-400">
-                  Upload data to get started
-                </p>
+                <p className="text-xs text-gray-400">Upload data to get started</p>
               </div>
             </div>
 
-            {/* User Profile Section */}
             <div className="p-3 border-t border-gray-200">
               <button
                 onClick={handleUserProfileClick}
                 className="w-full flex items-center space-x-3 p-2 rounded hover:bg-gray-50 transition-colors"
               >
                 <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-4 h-4 text-gray-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                    />
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
                 <div className="flex-1 text-left">
@@ -381,7 +289,6 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col relative">
-        {/* Top Bar */}
         <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0 relative z-50">
           <Button
             variant="ghost"
@@ -397,21 +304,14 @@ export function AppLayout({ children }: AppLayoutProps) {
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </Button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-hidden">{children}</div>
       </div>
 
-      {/* Mobile backdrop */}
       {isMobile && isDrawerOpen && (
         <div
           className="absolute inset-0 bg-transparent z-10"
