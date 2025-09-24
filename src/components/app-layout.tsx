@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -9,10 +10,25 @@ interface AppLayoutProps {
   isLandingPage?: boolean;
 }
 
-export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLayoutProps) {
+export function AppLayout({
+  children,
+  onNewChat,
+  isLandingPage = false,
+}: AppLayoutProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlant, setSelectedPlant] = useState("demo_plant");
+  const { user, signOut, loading } = useAuth();
+
+  // Debug auth state changes
+  useEffect(() => {
+    console.log(
+      "AppLayout auth state changed:",
+      user ? user.email : "no user",
+      "loading:",
+      loading
+    );
+  }, [user, loading]);
 
   // For MVP: Only show Demo Plant until user adds plants via Settings
   const userPlants = [{ id: "demo_plant", name: "Demo Plant" }];
@@ -30,17 +46,32 @@ export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLay
   }, []);
 
   const handleUserProfileClick = () => {
-    console.log("User profile clicked - open auth");
+    if (user) {
+      // Go to profile page instead of signing out immediately
+      window.location.href = "/profile";
+    } else {
+      // Go to login page
+      window.location.href = "/login";
+    }
   };
 
   const handleChatClick = () => {
     // Disable functionality but don't change appearance on landing page
     if (isLandingPage) return;
-    
+
     if (onNewChat) {
       onNewChat();
     }
   };
+
+  // Show loading state while auth is initializing
+  if (loading) {
+    return (
+      <div className="flex h-screen bg-gray-100 items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -153,12 +184,22 @@ export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLay
               <button
                 onClick={handleUserProfileClick}
                 className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                title="Demo User - Click to sign in"
-                aria-label="Demo User - Click to sign in"
+                title={
+                  user
+                    ? `${user.email} - Click to manage account`
+                    : "Demo User - Click to sign in"
+                }
+                aria-label={user ? "Click to sign out" : "Click to sign in"}
               >
-                <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center">
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                    user ? "bg-blue-100" : "bg-gray-300"
+                  }`}
+                >
                   <svg
-                    className="w-3 h-3 text-gray-600"
+                    className={`w-3 h-3 ${
+                      user ? "text-blue-600" : "text-gray-600"
+                    }`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -190,25 +231,87 @@ export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLay
                   xmlns="http://www.w3.org/2000/svg"
                 >
                   <g transform="translate(20, 30)">
-                    <circle cx="0" cy="0" r="3" fill="currentColor" className="text-blue-600" />
-                    <circle cx="8" cy="0" r="2" fill="currentColor" className="text-blue-600" />
-                    <circle cx="-8" cy="0" r="2" fill="currentColor" className="text-blue-600" />
-                    <circle cx="0" cy="8" r="2" fill="currentColor" className="text-blue-600" />
-                    <circle cx="0" cy="-8" r="2" fill="currentColor" className="text-blue-600" />
-                    <circle cx="6" cy="6" r="1.5" fill="currentColor" className="text-blue-600" />
-                    <circle cx="-6" cy="6" r="1.5" fill="currentColor" className="text-blue-600" />
-                    <circle cx="6" cy="-6" r="1.5" fill="currentColor" className="text-blue-600" />
-                    <circle cx="-6" cy="-6" r="1.5" fill="currentColor" className="text-blue-600" />
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="3"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
+                    <circle
+                      cx="8"
+                      cy="0"
+                      r="2"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
+                    <circle
+                      cx="-8"
+                      cy="0"
+                      r="2"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
+                    <circle
+                      cx="0"
+                      cy="8"
+                      r="2"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
+                    <circle
+                      cx="0"
+                      cy="-8"
+                      r="2"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
+                    <circle
+                      cx="6"
+                      cy="6"
+                      r="1.5"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
+                    <circle
+                      cx="-6"
+                      cy="6"
+                      r="1.5"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
+                    <circle
+                      cx="6"
+                      cy="-6"
+                      r="1.5"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
+                    <circle
+                      cx="-6"
+                      cy="-6"
+                      r="1.5"
+                      fill="currentColor"
+                      className="text-blue-600"
+                    />
                   </g>
-                  <text x="50" y="37" fontFamily="Inter, sans-serif" fontSize="18" fontWeight="700" fill="currentColor" className="text-gray-800">
+                  <text
+                    x="50"
+                    y="37"
+                    fontFamily="Inter, sans-serif"
+                    fontSize="18"
+                    fontWeight="700"
+                    fill="currentColor"
+                    className="text-gray-800"
+                  >
                     PLANT INTEL
                   </text>
                 </svg>
               </div>
-              
+
               {/* Simple plant display - no dropdown until multiple plants exist */}
               <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2.5">
-                Demo Plant
+                {user ? "Your Plant" : "Demo Plant"}
               </div>
             </div>
 
@@ -222,13 +325,22 @@ export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLay
                 >
                   Chat
                 </Button>
-                <Button variant="ghost" className="w-full justify-start text-sm h-9 text-gray-600">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-sm h-9 text-gray-600"
+                >
                   Alerts
                 </Button>
-                <Button variant="ghost" className="w-full justify-start text-sm h-9 text-gray-600">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-sm h-9 text-gray-600"
+                >
                   Reports
                 </Button>
-                <Button variant="ghost" className="w-full justify-start text-sm h-9 text-gray-600">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-sm h-9 text-gray-600"
+                >
                   Settings
                 </Button>
               </div>
@@ -239,8 +351,8 @@ export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLay
               <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
                 Recent Data
               </h3>
-              
-              {!isLandingPage ? (
+
+              {!isLandingPage && user ? (
                 <>
                   <div className="space-y-2">
                     <div className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded">
@@ -252,14 +364,24 @@ export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLay
                   </div>
 
                   <div className="mt-6 text-center">
-                    <p className="text-xs text-gray-400 mb-2">No recent uploads</p>
-                    <p className="text-xs text-gray-400">Upload data to get started</p>
+                    <p className="text-xs text-gray-400 mb-2">
+                      No recent uploads
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Upload data to get started
+                    </p>
                   </div>
                 </>
               ) : (
                 <div className="text-center">
-                  <p className="text-xs text-gray-400 mb-2">No recent uploads</p>
-                  <p className="text-xs text-gray-400">Upload data to get started</p>
+                  <p className="text-xs text-gray-400 mb-2">
+                    {user ? "No recent uploads" : "Demo data available"}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {user
+                      ? "Upload data to get started"
+                      : "Sign in to save your data"}
+                  </p>
                 </div>
               )}
             </div>
@@ -270,14 +392,34 @@ export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLay
                 onClick={handleUserProfileClick}
                 className="w-full flex items-center space-x-3 p-2 rounded hover:bg-gray-50 transition-colors"
               >
-                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    user ? "bg-blue-100" : "bg-gray-300"
+                  }`}
+                >
+                  <svg
+                    className={`w-4 h-4 ${
+                      user ? "text-blue-600" : "text-gray-600"
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
                   </svg>
                 </div>
                 <div className="flex-1 text-left">
-                  <p className="text-sm font-medium text-gray-900">Demo User</p>
-                  <p className="text-xs text-gray-500">Click to sign in</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {user ? user.email : "Demo User"}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {user ? "Click to manage account" : "Click to sign in"}
+                  </p>
                 </div>
               </button>
             </div>
@@ -302,7 +444,12 @@ export function AppLayout({ children, onNewChat, isLandingPage = false }: AppLay
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </Button>
         </div>

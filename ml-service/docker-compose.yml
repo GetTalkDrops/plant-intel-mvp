@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  ml-engine:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env.local
+    volumes:
+      - .:/app
+    restart: unless-stopped
