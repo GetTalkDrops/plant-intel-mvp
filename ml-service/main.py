@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from cost_analyzer import CostAnalyzer
 from equipment_predictor import EquipmentPredictor
+from quality_analyzer import QualityAnalyzer
 
 app = FastAPI()
 
@@ -15,6 +16,8 @@ app.add_middleware(
 )
 
 cost_analyzer = CostAnalyzer()
+equipment_predictor = EquipmentPredictor()
+quality_analyzer = QualityAnalyzer()
 
 @app.get("/health")
 async def health_check():
@@ -29,3 +32,9 @@ equipment_predictor = EquipmentPredictor()
 @app.get("/analyze/equipment-failure")
 async def analyze_equipment_failure(facility_id: int = 1):
     return equipment_predictor.predict_failures(facility_id)
+
+quality_analyzer = QualityAnalyzer()
+
+@app.get("/analyze/quality-patterns")
+async def analyze_quality_patterns(facility_id: int = 1):
+    return quality_analyzer.analyze_quality_patterns(facility_id)
