@@ -54,6 +54,24 @@ interface QualityResponse {
   overall_scrap_rate: number;
 }
 
+interface EfficiencyInsight {
+  operation_type: string;
+  efficiency_score: number;
+  labor_efficiency: number;
+  cost_efficiency: number;
+  improvement_factors: string[];
+  orders_analyzed: number;
+  potential_savings: number;
+  avg_labor_variance_hours: number;
+  avg_cost_variance: number;
+}
+
+interface EfficiencyResponse {
+  efficiency_insights: EfficiencyInsight[];
+  overall_efficiency: number;
+  total_savings_opportunity: number;
+}
+
 // Call Python ML service
 async function callMLService(
   endpoint: string,
@@ -154,6 +172,41 @@ function formatQualityAnalysis(mlData: QualityResponse): ManufacturingInsight {
   };
 }
 
+// Format efficiency analysis
+function formatEfficiencyAnalysis(
+  mlData: EfficiencyResponse
+): ManufacturingInsight {
+  if (!mlData.efficiency_insights || mlData.efficiency_insights.length === 0) {
+    return {
+      response:
+        "Operations are running efficiently with no major improvement opportunities identified.",
+    };
+  }
+
+  let response = `**Operational Efficiency Analysis**\n\n`;
+  response += `**Overall facility efficiency: ${mlData.overall_efficiency}%**\n\n`;
+  response += `**IMPROVEMENT OPPORTUNITIES** (${mlData.efficiency_insights.length} identified):\n\n`;
+
+  mlData.efficiency_insights.forEach((insight: EfficiencyInsight) => {
+    response += `• **${insight.operation_type} Operations**: ${insight.efficiency_score}% efficiency score\n`;
+    response += `  Labor efficiency: ${insight.labor_efficiency}%\n`;
+    response += `  Cost efficiency: ${insight.cost_efficiency}%\n`;
+    response += `  Potential savings: $${insight.potential_savings.toLocaleString()}\n`;
+    response += `  Improvement areas: ${insight.improvement_factors.join(
+      ", "
+    )}\n`;
+    response += `  Analysis: ${insight.orders_analyzed} orders, avg variance: ${insight.avg_labor_variance_hours}hr labor, $${insight.avg_cost_variance} cost\n\n`;
+  });
+
+  response += `**TOTAL SAVINGS OPPORTUNITY**: $${mlData.total_savings_opportunity.toLocaleString()}\n\n`;
+  response += `**RECOMMENDATION**: Focus on labor productivity optimization and cost planning accuracy for identified operation types.`;
+
+  return {
+    response,
+    costImpact: mlData.total_savings_opportunity,
+  };
+}
+
 // Main query processor
 export async function processManufacturingQuery(
   query: string,
@@ -162,36 +215,22 @@ export async function processManufacturingQuery(
   const targetFacility = facilityId || 1;
   const normalizedQuery = query.toLowerCase();
 
-  if (
-    normalizedQuery.includes("predict") ||
-    normalizedQuery.includes("forecast") ||
-    normalizedQuery.includes("risk") ||
-    normalizedQuery.includes("cost")
-  ) {
-    const mlData = await callMLService("/analyze/cost-variance", {
+  // Most specific matches first
+  if (normalizedQuery.includes("efficiency")) {
+    const mlData = await callMLService("/analyze/efficiency-patterns", {
       facility_id: targetFacility,
     });
-    return formatPredictions(mlData as MLResponse);
+    return formatEfficiencyAnalysis(mlData as EfficiencyResponse);
   }
 
-  if (
-    normalizedQuery.includes("equipment") ||
-    normalizedQuery.includes("failure") ||
-    normalizedQuery.includes("maintenance") ||
-    normalizedQuery.includes("downtime")
-  ) {
-    const mlData = await callMLService("/analyze/equipment-failure", {
+  if (normalizedQuery.includes("productivity")) {
+    const mlData = await callMLService("/analyze/efficiency-patterns", {
       facility_id: targetFacility,
     });
-    return formatEquipmentPredictions(mlData as EquipmentResponse);
+    return formatEfficiencyAnalysis(mlData as EfficiencyResponse);
   }
 
-  if (
-    normalizedQuery.includes("quality") ||
-    normalizedQuery.includes("qulaity") ||
-    normalizedQuery.includes("defect") ||
-    normalizedQuery.includes("scrap")
-  ) {
+  if (normalizedQuery.includes("quality")) {
     const mlData = await callMLService("/analyze/quality-patterns", {
       facility_id: targetFacility,
     });
@@ -199,11 +238,21 @@ export async function processManufacturingQuery(
   }
 
   if (
-    normalizedQuery.includes("production") ||
-    normalizedQuery.includes("performance") ||
-    normalizedQuery.includes("efficiency")
+    normalizedQuery.includes("equipment") ||
+    normalizedQuery.includes("maintenance")
   ) {
-    // For now, redirect production queries to cost analysis
+    const mlData = await callMLService("/analyze/equipment-failure", {
+      facility_id: targetFacility,
+    });
+    return formatEquipmentPredictions(mlData as EquipmentResponse);
+  }
+
+  // Cost analysis (broader matches at end)
+  if (
+    normalizedQuery.includes("predict") ||
+    normalizedQuery.includes("cost") ||
+    normalizedQuery.includes("risk")
+  ) {
     const mlData = await callMLService("/analyze/cost-variance", {
       facility_id: targetFacility,
     });
@@ -212,6 +261,6 @@ export async function processManufacturingQuery(
 
   // Default response
   return {
-    response: `I can analyze your manufacturing data for:\n\n• **Predictive cost analysis** - identify orders at risk of budget overruns\n• **Equipment failure prediction** - prevent costly downtime with maintenance insights\n• **Quality pattern analysis** - detect materials and processes causing defects\n\nWhat would you like to explore?`,
+    response: `I can analyze your manufacturing data for:\n\n• **Predictive cost analysis** - identify orders at risk of budget overruns\n• **Equipment failure prediction** - prevent costly downtime with maintenance insights\n• **Quality pattern analysis** - detect materials and processes causing defects\n• **Operational efficiency analysis** - optimize labor productivity and resource utilization\n\nWhat would you like to explore?`,
   };
 }
