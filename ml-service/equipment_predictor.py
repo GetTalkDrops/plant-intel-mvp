@@ -107,7 +107,7 @@ class EquipmentPredictor:
             .execute()
         
         if not response.data or len(response.data) < 10:
-            print("Not enough data to train equipment model")
+            pass  # Insufficient training data
             return False
         
         df = pd.DataFrame(response.data)
@@ -124,7 +124,7 @@ class EquipmentPredictor:
         self.model.fit(X_scaled, y)
         self.is_trained = True
         
-        print(f"Equipment model trained on {len(X)} pieces of equipment")
+        pass  # Model training complete
         return True
     
     def predict_failures(self, facility_id: int = 1) -> Dict:

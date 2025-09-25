@@ -16,36 +16,43 @@ class EnhancedQueryRouter:
         self.templates = ConversationalTemplates()
         
     def route_query(self, query: str, facility_id: int = 1) -> Dict:
-        """Route query with data awareness"""
+        """Enhanced routing with proper priority order"""
         query_lower = query.lower().strip()
         
-        # Check for conversational follow-ups first
-        follow_up = self.templates.get_follow_up_response(query, {})
-        if follow_up:
-            return follow_up
+        # Priority 1: Specific equipment/material follow-ups (most specific)
+        if any(mat in query_lower for mat in ['mat-1900', 'mat-1800', 'mat-1600']):
+            follow_up = self.templates.get_follow_up_response(query, {})
+            if follow_up:
+                return follow_up
         
-        # Check for data limitations
+        # Priority 2: Data limitation cases (need specific responses)
         data_response = self.data_responder.get_data_aware_response(query, facility_id)
         if data_response:
             return data_response
         
-        # Standard routing for queries we can handle
+        # Priority 3: Standard analysis routing (what we can actually do)
         if any(word in query_lower for word in ['cost', 'budget', 'overrun', 'expense', 'money', 'save', 'roi']):
             return self._format_cost_response(facility_id, query)
         
-        if any(word in query_lower for word in ['equipment', 'maintenance', 'failure', 'broken', 'repair']):
+        if any(word in query_lower for word in ['equipment', 'maintenance', 'failure', 'broken', 'repair']) and 'need' in query_lower:
             return self._format_equipment_response(facility_id, query)
         
-        if any(word in query_lower for word in ['quality', 'defect', 'scrap', 'waste']):
+        if any(word in query_lower for word in ['quality', 'defect', 'scrap', 'waste']) and not any(word in query_lower for word in ['plant', 'facility']):
             return self._format_quality_response(facility_id, query)
         
-        if any(word in query_lower for word in ['efficiency', 'performance', 'productivity']):
+        if any(word in query_lower for word in ['efficiency', 'performance', 'productivity', 'labor', 'hours']):
             return self._format_efficiency_response(facility_id, query)
         
         if any(word in query_lower for word in ['overview', 'summary', 'everything', 'all']):
             return self._format_overview_response(facility_id, query)
         
-        # Fallback for unrecognized queries
+        # Priority 4: General conversational templates (only if no specific match)
+        if any(word in query_lower for word in ['calculate', 'calculation', 'how did you', 'using to calculate', 'failure risk', 'percentage']):
+            follow_up = self.templates.get_follow_up_response(query, {})
+            if follow_up:
+                return follow_up
+        
+        # Fallback
         return {
             'type': 'help',
             'message': "I can analyze your manufacturing data for cost variance, equipment performance, quality issues, and operational efficiency.\n\nTry asking:\n• 'What equipment needs attention?'\n• 'Show me cost risks'\n• 'What are my quality issues?'\n• 'How is my efficiency?'",
@@ -180,35 +187,3 @@ class EnhancedQueryRouter:
             'total_impact': 0,
             'redirect_to': 'auto_summary'
         }
-
-from conversational_templates import ConversationalTemplates
-
-class EnhancedQueryRouter:
-    def __init__(self):
-        self.cost_analyzer = CostAnalyzer()
-        self.equipment_predictor = EquipmentPredictor()
-        self.quality_analyzer = QualityAnalyzer()
-        self.efficiency_analyzer = EfficiencyAnalyzer()
-        self.data_responder = DataAwareResponder()
-        self.templates = ConversationalTemplates()
-        self.templates = ConversationalTemplates()
-        
-        # Store context from recent analyses
-        self.recent_context = {}
-    
-    def route_query(self, query: str, facility_id: int = 1) -> Dict:
-        """Enhanced routing with conversational templates"""
-        query_lower = query.lower().strip()
-        
-        # Check for conversational follow-ups first
-        follow_up = self.templates.get_follow_up_response(query, self.recent_context)
-        if follow_up:
-            return follow_up
-        
-        # Check for data limitations
-        data_response = self.data_responder.get_data_aware_response(query, facility_id)
-        if data_response:
-            return data_response
-        
-        # Standard analysis routing (existing code continues...)
-        # ... rest of existing routing logic

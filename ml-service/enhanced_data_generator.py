@@ -42,7 +42,6 @@ class EnhancedDataGenerator:
         
         # Clear existing demo data
         self.supabase.table('work_orders').delete().eq('demo_mode', True).execute()
-        print("Cleared existing demo data")
         
         work_orders = []
         operations = ["PROD", "MAINT", "SETUP", "QC", "PACK"]
@@ -93,9 +92,7 @@ class EnhancedDataGenerator:
         for i in range(0, len(work_orders), batch_size):
             batch = work_orders[i:i + batch_size]
             self.supabase.table('work_orders').insert(batch).execute()
-            print(f"Inserted batch {i//batch_size + 1}/{len(work_orders)//batch_size + 1}")
         
-        print(f"Generated {len(work_orders)} comprehensive work orders with realistic patterns")
         
         # Print scenario summary
         self._print_scenario_summary()
@@ -170,12 +167,6 @@ class EnhancedDataGenerator:
     
     def _print_scenario_summary(self):
         """Print summary of generated scenarios for validation"""
-        print("\n=== Scenario Summary ===")
-        print("Cost Escalation: MAT-1500, MAT-1501, MAT-1502 (recent orders)")
-        print("Equipment Issues: MAT-1800, MAT-1801 (efficiency decline)")
-        print("Quality Problems: MAT-1900, MAT-1901, MAT-1902 (high scrap)")
-        print("Process Issues: MAT-1600, MAT-1601 (inconsistent performance)")
-        print("========================")
 
 if __name__ == "__main__":
     generator = EnhancedDataGenerator()

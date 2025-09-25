@@ -38,9 +38,6 @@ class DataAwareResponder:
             if sample.get('material_code'):
                 self.available_fields.add('equipment_materials')
                 
-            # We don't have these in demo data
-            # shift_id, plant_id, employee_id, machine_id, etc.
-    
     def get_data_aware_response(self, query: str, facility_id: int = 1) -> Dict:
         """Generate data-aware response based on available data"""
         query_lower = query.lower()
@@ -77,16 +74,6 @@ class DataAwareResponder:
                 'alternative_analyses': ['labor_efficiency', 'process_analysis', 'equipment_utilization']
             }
         
-        # Machine/specific equipment queries (when they ask for machine IDs we don't have)
-        if any(word in query_lower for word in ['machine', 'line', 'station']) and not any(mat in query_lower for mat in ['mat-', 'material']):
-            self._log_missing_query(query, 'machine_data')
-            return {
-                'type': 'data_limitation',
-                'message': f"I need specific machine identifier data to analyze individual machines or production lines. Your current data uses material codes as equipment proxies.\n\n**To analyze specific machines, I need:**\n• Machine_ID or Equipment_Name fields\n• Production line identifiers\n• Individual machine performance metrics\n\n**What I can analyze with material codes:**\n• Performance patterns by material type (MAT-1900, MAT-1800, etc.)\n• Equipment issues inferred from labor and quality patterns\n• Maintenance needs based on performance degradation",
-                'missing_data': 'machine_identifiers',
-                'alternative_analyses': ['material_performance', 'inferred_equipment_health', 'maintenance_prediction']
-            }
-        
         # Return None if this isn't a data limitation case
         return None
     
@@ -97,25 +84,3 @@ class DataAwareResponder:
             'missing_data_type': data_type,
             'timestamp': 'demo_session'
         })
-        
-        # In a real system, you'd write to a file or database
-        # For now, just track in memory for the session
-
-# Test the data-aware responder
-if __name__ == "__main__":
-    responder = DataAwareResponder()
-    
-    test_queries = [
-        "what shift performs best",
-        "which plant has better quality",
-        "what employee is most productive",
-        "how is machine line 3 performing"
-    ]
-    
-    for query in test_queries:
-        result = responder.get_data_aware_response(query)
-        if result:
-            print(f"Query: {query}")
-            print(f"Response: {result['message'][:100]}...")
-            print(f"Missing: {result['missing_data']}")
-            print("---")

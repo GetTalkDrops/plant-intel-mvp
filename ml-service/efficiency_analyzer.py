@@ -45,7 +45,7 @@ class EfficiencyAnalyzer:
             .execute()
         
         if not response.data or len(response.data) < 10:
-            print("Not enough data to train efficiency model")
+            pass  # Insufficient training data
             return False
         
         df = pd.DataFrame(response.data)
@@ -115,7 +115,7 @@ class EfficiencyAnalyzer:
         self.model.fit(X_scaled, y)
         self.is_trained = True
         
-        print(f"Efficiency model trained on {len(X)} operation types")
+        pass  # Model training complete
         return True
     
     def analyze_efficiency_patterns(self, facility_id: int = 1) -> Dict:

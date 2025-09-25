@@ -145,5 +145,3 @@ class ConversationalAutoAnalysis:
 if __name__ == "__main__":
     system = ConversationalAutoAnalysis()
     result = system.generate_conversational_summary()
-    print("=== CONVERSATIONAL ANALYSIS ===")
-    print(result['message'])

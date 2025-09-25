@@ -66,7 +66,7 @@ class CostAnalyzer:
             .execute()
         
         if not response.data or len(response.data) < 10:
-            print("Not enough data to train model")
+            pass  # Insufficient training data
             return False
         
         df = pd.DataFrame(response.data)
