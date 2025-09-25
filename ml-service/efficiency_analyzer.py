@@ -1,122 +1,243 @@
 from supabase import create_client, Client
 import pandas as pd
 import numpy as np
-from typing import List, Dict
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+from typing import Dict
 import os
 from dotenv import load_dotenv
+import warnings
+warnings.filterwarnings('ignore')
 
 class EfficiencyAnalyzer:
     def __init__(self):
         load_dotenv('../.env.local')
+        
         url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
         key = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
         
         if not url or not key:
-            raise ValueError("Missing Supabase credentials in environment variables")
+            raise ValueError("Missing Supabase credentials")
         
         self.supabase: Client = create_client(url, key)
-    
-    def analyze_efficiency_patterns(self, facility_id: int) -> Dict:
-        # Get work orders to analyze efficiency patterns
-        response = self.supabase.table('work_orders').select('*').eq('facility_id', facility_id).eq('demo_mode', True).execute()
+        self.model = RandomForestRegressor(n_estimators=50, random_state=42)
+        self.scaler = StandardScaler()
+        self.is_trained = False
         
-        if not response.data:
-            return {"efficiency_insights": [], "overall_efficiency": 0}
+    def _create_features(self, operation_data: Dict) -> np.ndarray:
+        """Create features for efficiency prediction"""
+        features = [
+            operation_data['avg_labor_variance'],
+            operation_data['avg_cost_variance'], 
+            operation_data['total_orders'],
+            operation_data['labor_efficiency'],
+            operation_data['cost_efficiency'],
+            operation_data['consistency_score']
+        ]
+        return np.array([features])
+    
+    def train_model(self, facility_id: int = 1):
+        """Train the efficiency prediction model"""
+        response = self.supabase.table('work_orders')\
+            .select('*')\
+            .eq('facility_id', facility_id)\
+            .eq('demo_mode', True)\
+            .execute()
+        
+        if not response.data or len(response.data) < 10:
+            print("Not enough data to train efficiency model")
+            return False
         
         df = pd.DataFrame(response.data)
         
-        # Calculate efficiency metrics
-        df['labor_efficiency'] = df.apply(lambda row: 
-            (row['planned_labor_hours'] / row['actual_labor_hours'] * 100) 
-            if row['actual_labor_hours'] and row['actual_labor_hours'] > 0 
-            else 100, axis=1)
-        
-        df['cost_efficiency'] = df.apply(lambda row: 
-            (row['planned_material_cost'] / row['actual_material_cost'] * 100) 
-            if row['actual_material_cost'] and row['actual_material_cost'] > 0 
-            else 100, axis=1)
-        
-        # Overall facility efficiency
-        overall_efficiency = df['labor_efficiency'].mean()
-        
-        # Analyze by operation type (extracted from work order number)
-        operation_efficiency = {}
+        # Analyze by operation type
+        operation_data = {}
         for _, order in df.iterrows():
-            # Extract operation type from work order number (WO-PROD-0001 -> PROD)
             parts = order['work_order_number'].split('-')
-            operation_type = parts[1] if len(parts) > 1 else 'UNKNOWN'
+            op_type = parts[1] if len(parts) > 1 else 'UNKNOWN'
             
-            if operation_type not in operation_efficiency:
-                operation_efficiency[operation_type] = {
-                    'total_orders': 0,
-                    'labor_efficiency_sum': 0,
-                    'cost_efficiency_sum': 0,
-                    'labor_hours_variance': 0,
-                    'cost_variance': 0
+            if op_type not in operation_data:
+                operation_data[op_type] = {
+                    'labor_variances': [],
+                    'cost_variances': [],
+                    'efficiencies': []
                 }
             
-            op_data = operation_efficiency[operation_type]
-            op_data['total_orders'] += 1
-            op_data['labor_efficiency_sum'] += order['labor_efficiency']
-            op_data['cost_efficiency_sum'] += order['cost_efficiency']
-            
             # Calculate variances
-            labor_variance = (order['actual_labor_hours'] or 0) - (order['planned_labor_hours'] or 0)
-            cost_variance = (order['actual_material_cost'] or 0) - (order['planned_material_cost'] or 0)
-            op_data['labor_hours_variance'] += abs(labor_variance)
-            op_data['cost_variance'] += abs(cost_variance)
+            labor_var = (order['actual_labor_hours'] or 0) - (order['planned_labor_hours'] or 0)
+            cost_var = (order['actual_material_cost'] or 0) - (order['planned_material_cost'] or 0)
+            
+            # Calculate efficiency
+            if order['actual_labor_hours'] and order['actual_labor_hours'] > 0:
+                efficiency = (order['planned_labor_hours'] or 0) / order['actual_labor_hours'] * 100
+            else:
+                efficiency = 100
+            
+            operation_data[op_type]['labor_variances'].append(labor_var)
+            operation_data[op_type]['cost_variances'].append(cost_var)
+            operation_data[op_type]['efficiencies'].append(efficiency)
         
-        # Generate efficiency insights
-        efficiency_insights = []
-        for operation_type, data in operation_efficiency.items():
-            if data['total_orders'] < 2:  # Need minimum data
+        # Prepare training data
+        X = []
+        y = []  # Target: potential savings opportunity
+        
+        for op_type, data in operation_data.items():
+            if len(data['labor_variances']) < 2:
                 continue
+            
+            avg_labor_var = np.mean(data['labor_variances'])
+            avg_cost_var = np.mean(data['cost_variances'])
+            avg_efficiency = np.mean(data['efficiencies'])
+            total_orders = len(data['labor_variances'])
+            consistency = np.std(data['labor_variances'])
+            
+            # Calculate efficiency metrics
+            labor_eff = max(0, avg_efficiency)
+            cost_eff = max(0, 100 - abs(avg_cost_var) / 100)
+            
+            features = [avg_labor_var, avg_cost_var, total_orders, labor_eff, cost_eff, consistency]
+            
+            # Target: potential savings (higher variance = more savings opportunity)
+            potential_savings = abs(avg_labor_var) * 25 * total_orders + abs(avg_cost_var) * 0.3 * total_orders
+            
+            X.append(features)
+            y.append(potential_savings)
+        
+        if len(X) == 0:
+            print("No valid operation data for training")
+            return False
+        
+        X = np.array(X)
+        y = np.array(y)
+        
+        # Train model
+        X_scaled = self.scaler.fit_transform(X)
+        self.model.fit(X_scaled, y)
+        self.is_trained = True
+        
+        print(f"Efficiency model trained on {len(X)} operation types")
+        return True
+    
+    def analyze_efficiency_patterns(self, facility_id: int = 1) -> Dict:
+        """Analyze efficiency patterns using ML model"""
+        if not self.is_trained:
+            self.train_model(facility_id)
+        
+        response = self.supabase.table('work_orders')\
+            .select('*')\
+            .eq('facility_id', facility_id)\
+            .eq('demo_mode', True)\
+            .execute()
+        
+        if not response.data:
+            return {"efficiency_insights": [], "overall_efficiency": 0, "total_savings_opportunity": 0}
+        
+        df = pd.DataFrame(response.data)
+        
+        # Calculate overall efficiency
+        overall_labor_efficiency = []
+        for _, order in df.iterrows():
+            if order['actual_labor_hours'] and order['actual_labor_hours'] > 0:
+                eff = (order['planned_labor_hours'] or 0) / order['actual_labor_hours'] * 100
+                overall_labor_efficiency.append(min(150, max(0, eff)))
+        
+        overall_efficiency = np.mean(overall_labor_efficiency) if overall_labor_efficiency else 0
+        
+        # Analyze by operation type
+        efficiency_insights = []
+        
+        operation_performance = {}
+        for _, order in df.iterrows():
+            parts = order['work_order_number'].split('-')
+            op_type = parts[1] if len(parts) > 1 else 'UNKNOWN'
+            
+            if op_type not in operation_performance:
+                operation_performance[op_type] = {
+                    'total_orders': 0,
+                    'labor_variances': [],
+                    'cost_variances': [],
+                    'labor_efficiencies': [],
+                    'cost_efficiencies': []
+                }
+            
+            op_data = operation_performance[op_type]
+            op_data['total_orders'] += 1
+            
+            # Calculate metrics
+            labor_var = (order['actual_labor_hours'] or 0) - (order['planned_labor_hours'] or 0)
+            cost_var = (order['actual_material_cost'] or 0) - (order['planned_material_cost'] or 0)
+            
+            op_data['labor_variances'].append(labor_var)
+            op_data['cost_variances'].append(cost_var)
+            
+            # Efficiency calculations
+            if order['actual_labor_hours'] and order['actual_labor_hours'] > 0:
+                labor_eff = (order['planned_labor_hours'] or 0) / order['actual_labor_hours'] * 100
+            else:
+                labor_eff = 100
                 
-            avg_labor_efficiency = data['labor_efficiency_sum'] / data['total_orders']
-            avg_cost_efficiency = data['cost_efficiency_sum'] / data['total_orders']
-            avg_labor_variance = data['labor_hours_variance'] / data['total_orders']
-            avg_cost_variance = data['cost_variance'] / data['total_orders']
-            
-            # Calculate efficiency score
-            efficiency_score = (avg_labor_efficiency + avg_cost_efficiency) / 2
-            
-            # Identify improvement opportunities
-            improvement_factors = []
-            if avg_labor_efficiency < 85:
-                improvement_factors.append('labor_productivity_below_target')
-            if avg_cost_efficiency < 90:
-                improvement_factors.append('cost_overruns_frequent')
-            if avg_labor_variance > 3:
-                improvement_factors.append('inconsistent_labor_planning')
-            if avg_cost_variance > 500:
-                improvement_factors.append('material_cost_volatility')
-            
-            # Only include operations with improvement opportunities
-            if improvement_factors:
-                # Calculate potential savings
-                potential_labor_savings = (100 - avg_labor_efficiency) * data['total_orders'] * 25 * 2  # $25/hr, 2hr avg improvement
-                potential_cost_savings = avg_cost_variance * data['total_orders'] * 0.3  # 30% of variance recoverable
-                total_savings = potential_labor_savings + potential_cost_savings
+            if order['actual_material_cost'] and order['actual_material_cost'] > 0:
+                cost_eff = (order['planned_material_cost'] or 0) / order['actual_material_cost'] * 100
+            else:
+                cost_eff = 100
                 
-                efficiency_insights.append({
-                    'operation_type': operation_type,
-                    'efficiency_score': round(efficiency_score, 1),
-                    'labor_efficiency': round(avg_labor_efficiency, 1),
-                    'cost_efficiency': round(avg_cost_efficiency, 1),
-                    'improvement_factors': improvement_factors,
-                    'orders_analyzed': data['total_orders'],
-                    'potential_savings': round(total_savings, 0),
-                    'avg_labor_variance_hours': round(avg_labor_variance, 1),
-                    'avg_cost_variance': round(avg_cost_variance, 0)
-                })
+            op_data['labor_efficiencies'].append(min(150, max(0, labor_eff)))
+            op_data['cost_efficiencies'].append(min(150, max(0, cost_eff)))
+        
+        # Generate insights for each operation
+        for op_type, data in operation_performance.items():
+            if data['total_orders'] < 2:
+                continue
+            
+            avg_labor_var = np.mean(data['labor_variances'])
+            avg_cost_var = np.mean(data['cost_variances'])
+            avg_labor_eff = np.mean(data['labor_efficiencies'])
+            avg_cost_eff = np.mean(data['cost_efficiencies'])
+            consistency = np.std(data['labor_variances'])
+            
+            # Create features for ML prediction
+            features = np.array([[avg_labor_var, avg_cost_var, data['total_orders'], 
+                                avg_labor_eff, avg_cost_eff, consistency]])
+            
+            try:
+                X_scaled = self.scaler.transform(features)
+                predicted_savings = self.model.predict(X_scaled)[0]
+                
+                # Only include operations with significant improvement opportunity
+                if predicted_savings > 1000 or avg_labor_eff < 85:
+                    improvement_factors = []
+                    if avg_labor_eff < 85:
+                        improvement_factors.append('labor_productivity_below_target')
+                    if avg_cost_eff < 90:
+                        improvement_factors.append('cost_overruns_frequent')
+                    if consistency > 3:
+                        improvement_factors.append('inconsistent_performance')
+                    if abs(avg_cost_var) > 500:
+                        improvement_factors.append('material_cost_volatility')
+                    
+                    efficiency_score = (avg_labor_eff + avg_cost_eff) / 2
+                    
+                    efficiency_insights.append({
+                        'operation_type': op_type,
+                        'efficiency_score': round(efficiency_score, 1),
+                        'labor_efficiency': round(avg_labor_eff, 1),
+                        'cost_efficiency': round(avg_cost_eff, 1),
+                        'improvement_factors': improvement_factors,
+                        'orders_analyzed': data['total_orders'],
+                        'potential_savings': round(predicted_savings, 0),
+                        'avg_labor_variance_hours': round(avg_labor_var, 1),
+                        'avg_cost_variance': round(avg_cost_var, 0)
+                    })
+            except:
+                continue
         
         # Sort by potential savings
         efficiency_insights.sort(key=lambda x: x['potential_savings'], reverse=True)
         
-        total_savings_opportunity = sum(insight['potential_savings'] for insight in efficiency_insights[:3])
+        total_savings = sum(insight['potential_savings'] for insight in efficiency_insights[:3])
         
         return {
-            "efficiency_insights": efficiency_insights[:3],  # Top 3 improvement opportunities
+            "efficiency_insights": efficiency_insights[:3],
             "overall_efficiency": round(overall_efficiency, 1),
-            "total_savings_opportunity": total_savings_opportunity
+            "total_savings_opportunity": int(total_savings)
         }

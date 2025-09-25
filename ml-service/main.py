@@ -40,3 +40,31 @@ async def analyze_quality_patterns(facility_id: int = 1):
 @app.get("/analyze/efficiency-patterns")
 async def analyze_efficiency_patterns(facility_id: int = 1):
     return efficiency_analyzer.analyze_efficiency_patterns(facility_id)
+from query_router import QueryRouter
+
+# Initialize query router
+query_router = QueryRouter()
+
+@app.post("/chat/query")
+async def process_chat_query(query_data: dict):
+    """Process natural language queries and return formatted responses"""
+    query = query_data.get('query', '')
+    facility_id = query_data.get('facility_id', 1)
+    
+    if not query:
+        return {"error": "Query is required"}
+    
+    try:
+        result = query_router.route_query(query, facility_id)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/chat/query")
+async def process_chat_query_get(query: str, facility_id: int = 1):
+    """GET version for easy testing"""
+    try:
+        result = query_router.route_query(query, facility_id)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
