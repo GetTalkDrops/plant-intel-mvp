@@ -40,10 +40,10 @@ async def analyze_quality_patterns(facility_id: int = 1):
 @app.get("/analyze/efficiency-patterns")
 async def analyze_efficiency_patterns(facility_id: int = 1):
     return efficiency_analyzer.analyze_efficiency_patterns(facility_id)
-from query_router import QueryRouter
+from query_router import EnhancedQueryRouter
 
 # Initialize query router
-query_router = QueryRouter()
+query_router = EnhancedQueryRouter()
 
 @app.post("/chat/query")
 async def process_chat_query(query_data: dict):
@@ -68,3 +68,22 @@ async def process_chat_query_get(query: str, facility_id: int = 1):
         return result
     except Exception as e:
         return {"error": str(e)}
+
+from auto_analysis_system import ConversationalAutoAnalysis
+
+auto_analysis = ConversationalAutoAnalysis()
+
+@app.get("/analyze/auto-summary")
+async def get_auto_summary(facility_id: int = 1):
+    """Get automatic action alert summary"""
+    return auto_analysis.generate_conversational_summary(facility_id)
+
+
+from auto_analysis_system import ConversationalAutoAnalysis
+
+auto_analysis = ConversationalAutoAnalysis()
+
+@app.get("/analyze/auto-summary")
+async def get_auto_summary(facility_id: int = 1):
+    """Get automatic action alert summary"""
+    return auto_analysis.generate_conversational_summary(facility_id)
