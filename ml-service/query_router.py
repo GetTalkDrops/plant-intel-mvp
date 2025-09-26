@@ -5,6 +5,7 @@ from quality_analyzer import QualityAnalyzer
 from efficiency_analyzer import EfficiencyAnalyzer
 from data_aware_responder import DataAwareResponder
 from conversational_templates import ConversationalTemplates
+from query_preprocessor import QueryPreprocessor
 
 class EnhancedQueryRouter:
     def __init__(self):
@@ -14,54 +15,81 @@ class EnhancedQueryRouter:
         self.efficiency_analyzer = EfficiencyAnalyzer()
         self.data_responder = DataAwareResponder()
         self.templates = ConversationalTemplates()
+        self.preprocessor = QueryPreprocessor()
         
     def route_query(self, query: str, facility_id: int = 1) -> Dict:
-        """Enhanced routing with proper priority order"""
-        query_lower = query.lower().strip()
+        """Enhanced routing with robust query preprocessing"""
         
-        # Priority 1: Specific equipment/material follow-ups (most specific)
+        # Preprocess query for typos and variations
+        corrected_query, was_corrected = self.preprocessor.suggest_correction(query)
+        categories = self.preprocessor.fuzzy_category_match(query)
+        
+        # Use the corrected query for routing
+        query_lower = corrected_query
+        
+        # Priority 1: Specific equipment/material follow-ups
         if any(mat in query_lower for mat in ['mat-1900', 'mat-1800', 'mat-1600']):
             follow_up = self.templates.get_follow_up_response(query, {})
             if follow_up:
-                return follow_up
+                return self._add_correction_note(follow_up, query, corrected_query, was_corrected)
         
-        # Priority 2: Data limitation cases (need specific responses)
-        data_response = self.data_responder.get_data_aware_response(query, facility_id)
+        # Priority 2: Data limitation cases
+        data_response = self.data_responder.get_data_aware_response(corrected_query, facility_id)
         if data_response:
-            return data_response
+            return self._add_correction_note(data_response, query, corrected_query, was_corrected)
         
-        # Priority 3: Standard analysis routing (what we can actually do)
-        if any(word in query_lower for word in ['cost', 'budget', 'overrun', 'expense', 'money', 'save', 'roi']):
-            return self._format_cost_response(facility_id, query)
+        # Priority 3: Category-based routing using fuzzy matching
+        if 'cost' in categories:
+            return self._add_correction_note(
+                self._format_cost_response(facility_id, query), 
+                query, corrected_query, was_corrected
+            )
         
-        if any(word in query_lower for word in ['equipment', 'maintenance', 'failure', 'broken', 'repair']) and 'need' in query_lower:
-            return self._format_equipment_response(facility_id, query)
+        if 'equipment' in categories and ('maintenance' in categories or 'need' in query_lower):
+            return self._add_correction_note(
+                self._format_equipment_response(facility_id, query),
+                query, corrected_query, was_corrected
+            )
         
-        if any(word in query_lower for word in ['quality', 'defect', 'scrap', 'waste']) and not any(word in query_lower for word in ['plant', 'facility']):
-            return self._format_quality_response(facility_id, query)
+        if 'quality' in categories and not any(cat in categories for cat in ['plant', 'facility']):
+            return self._add_correction_note(
+                self._format_quality_response(facility_id, query),
+                query, corrected_query, was_corrected
+            )
         
-        if any(word in query_lower for word in ['efficiency', 'performance', 'productivity', 'labor', 'hours']):
-            return self._format_efficiency_response(facility_id, query)
+        if 'efficiency' in categories:
+            return self._add_correction_note(
+                self._format_efficiency_response(facility_id, query),
+                query, corrected_query, was_corrected
+            )
         
-        if any(word in query_lower for word in ['overview', 'summary', 'everything', 'all']):
-            return self._format_overview_response(facility_id, query)
-        
-        # Priority 4: General conversational templates (only if no specific match)
-        if any(word in query_lower for word in ['calculate', 'calculation', 'how did you', 'using to calculate', 'failure risk', 'percentage']):
+        # Priority 4: General conversational templates
+        if any(word in query_lower for word in ['calculate', 'calculation', 'how did you']):
             follow_up = self.templates.get_follow_up_response(query, {})
             if follow_up:
-                return follow_up
+                return self._add_correction_note(follow_up, query, corrected_query, was_corrected)
         
-        # Fallback
-        return {
+        # Fallback with suggestion
+        fallback = {
             'type': 'help',
             'message': "I can analyze your manufacturing data for cost variance, equipment performance, quality issues, and operational efficiency.\n\nTry asking:\n• 'What equipment needs attention?'\n• 'Show me cost risks'\n• 'What are my quality issues?'\n• 'How is my efficiency?'",
             'insights': [],
             'total_impact': 0
         }
+        
+        return self._add_correction_note(fallback, query, corrected_query, was_corrected)
     
+    def _add_correction_note(self, response: Dict, original: str, corrected: str, was_corrected: bool) -> Dict:
+        """Add correction note if query was significantly changed"""
+        if was_corrected and original.lower() != corrected.lower():
+            # Add subtle correction note
+            correction_note = f"\n\n*Interpreting: '{corrected}'*"
+            response['message'] = response['message'] + correction_note
+        
+        return response
+    
+    # Include all the existing format methods from the previous router...
     def _format_cost_response(self, facility_id: int, query: str) -> Dict:
-        """Conversational cost analysis"""
         result = self.cost_analyzer.predict_cost_variance(facility_id)
         
         if not result['predictions']:
@@ -86,7 +114,6 @@ class EnhancedQueryRouter:
         }
     
     def _format_equipment_response(self, facility_id: int, query: str) -> Dict:
-        """Conversational equipment analysis"""
         result = self.equipment_predictor.predict_failures(facility_id)
         
         if not result['predictions']:
@@ -122,7 +149,6 @@ class EnhancedQueryRouter:
         }
     
     def _format_quality_response(self, facility_id: int, query: str) -> Dict:
-        """Conversational quality analysis"""
         result = self.quality_analyzer.analyze_quality_patterns(facility_id)
         
         if not result['quality_issues']:
@@ -148,7 +174,6 @@ class EnhancedQueryRouter:
         }
     
     def _format_efficiency_response(self, facility_id: int, query: str) -> Dict:
-        """Conversational efficiency analysis"""
         result = self.efficiency_analyzer.analyze_efficiency_patterns(facility_id)
         
         if not result['efficiency_insights']:
@@ -176,14 +201,4 @@ class EnhancedQueryRouter:
             'message': message,
             'insights': result['efficiency_insights'],
             'total_impact': result['total_savings_opportunity']
-        }
-    
-    def _format_overview_response(self, facility_id: int, query: str) -> Dict:
-        """Conversational overview - should redirect to auto-summary"""
-        return {
-            'type': 'overview_redirect',
-            'message': 'Let me give you a complete analysis of your operations...',
-            'insights': [],
-            'total_impact': 0,
-            'redirect_to': 'auto_summary'
         }

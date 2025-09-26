@@ -10,7 +10,10 @@ interface EmptyChatStateProps {
   onChatStart: (message: string) => void;
 }
 
-export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProps) {
+export function EmptyChatState({
+  onFileUpload,
+  onChatStart,
+}: EmptyChatStateProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [chatInput, setChatInput] = useState("");
 
@@ -29,16 +32,22 @@ export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProp
     setIsDragOver(false);
 
     const files = Array.from(e.dataTransfer.files);
-    const csvFile = files.find((file) => file.name.endsWith(".csv"));
+    const dataFile = files.find(
+      (file) =>
+        file.name.endsWith(".csv") ||
+        file.name.endsWith(".txt") ||
+        file.name.endsWith(".dat") ||
+        file.type === "text/csv"
+    );
 
-    if (csvFile) {
-      onFileUpload(csvFile);
+    if (dataFile) {
+      onFileUpload(dataFile);
     }
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.name.endsWith(".csv")) {
+    if (file) {
       onFileUpload(file);
     }
   };
@@ -63,24 +72,87 @@ export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProp
             xmlns="http://www.w3.org/2000/svg"
           >
             <g transform="translate(20, 30)">
-              <circle cx="0" cy="0" r="3" fill="currentColor" className="text-blue-600" />
-              <circle cx="8" cy="0" r="2" fill="currentColor" className="text-blue-600" />
-              <circle cx="-8" cy="0" r="2" fill="currentColor" className="text-blue-600" />
-              <circle cx="0" cy="8" r="2" fill="currentColor" className="text-blue-600" />
-              <circle cx="0" cy="-8" r="2" fill="currentColor" className="text-blue-600" />
-              <circle cx="6" cy="6" r="1.5" fill="currentColor" className="text-blue-600" />
-              <circle cx="-6" cy="6" r="1.5" fill="currentColor" className="text-blue-600" />
-              <circle cx="6" cy="-6" r="1.5" fill="currentColor" className="text-blue-600" />
-              <circle cx="-6" cy="-6" r="1.5" fill="currentColor" className="text-blue-600" />
+              <circle
+                cx="0"
+                cy="0"
+                r="3"
+                fill="currentColor"
+                className="text-blue-600"
+              />
+              <circle
+                cx="8"
+                cy="0"
+                r="2"
+                fill="currentColor"
+                className="text-blue-600"
+              />
+              <circle
+                cx="-8"
+                cy="0"
+                r="2"
+                fill="currentColor"
+                className="text-blue-600"
+              />
+              <circle
+                cx="0"
+                cy="8"
+                r="2"
+                fill="currentColor"
+                className="text-blue-600"
+              />
+              <circle
+                cx="0"
+                cy="-8"
+                r="2"
+                fill="currentColor"
+                className="text-blue-600"
+              />
+              <circle
+                cx="6"
+                cy="6"
+                r="1.5"
+                fill="currentColor"
+                className="text-blue-600"
+              />
+              <circle
+                cx="-6"
+                cy="6"
+                r="1.5"
+                fill="currentColor"
+                className="text-blue-600"
+              />
+              <circle
+                cx="6"
+                cy="-6"
+                r="1.5"
+                fill="currentColor"
+                className="text-blue-600"
+              />
+              <circle
+                cx="-6"
+                cy="-6"
+                r="1.5"
+                fill="currentColor"
+                className="text-blue-600"
+              />
             </g>
-            <text x="50" y="37" fontFamily="Inter, sans-serif" fontSize="18" fontWeight="700" fill="currentColor" className="text-gray-900">
+            <text
+              x="50"
+              y="37"
+              fontFamily="Inter, sans-serif"
+              fontSize="18"
+              fontWeight="700"
+              fill="currentColor"
+              className="text-gray-900"
+            >
               PLANT INTEL
             </text>
           </svg>
         </h1>
         <div className="text-sm sm:text-base">
           <p className="text-gray-600 mb-2">
-            Upload your production data to get intelligent manufacturing insights
+            Upload your production data to get intelligent manufacturing
+            insights
           </p>
           <p className="text-xs sm:text-sm text-gray-500">
             Supports upload of ERP exports, MES data, and manufacturing reports
@@ -152,12 +224,12 @@ export function EmptyChatState({ onFileUpload, onChatStart }: EmptyChatStateProp
             </div>
 
             <p className="text-xs text-gray-700 mb-2 font-medium">
-              Drop your CSV file here or click to browse
+              Drop your data file here or click to browse
             </p>
 
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,.txt,.dat,.json,.xml"
               onChange={handleFileInput}
               className="hidden"
               id="file-upload"

@@ -58,15 +58,21 @@ export function ChatInput({
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.name.endsWith(".csv") && onFileUpload) {
+    console.log("File selected:", file?.name, file?.type, file?.size);
+
+    if (file && onFileUpload) {
+      console.log("Calling onFileUpload with file:", file.name);
       onFileUpload(file);
     }
+
+    // Clear the input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
   const openFileDialog = () => {
+    console.log("Opening file dialog...");
     fileInputRef.current?.click();
   };
 
@@ -106,7 +112,7 @@ export function ChatInput({
                   className="min-h-[40px] sm:min-h-[48px] text-sm sm:text-base border-0 focus:ring-0 focus:outline-none bg-transparent resize-none"
                 />
               </div>
-              
+
               <Button
                 type="submit"
                 disabled={disabled || !message.trim()}
@@ -138,7 +144,7 @@ export function ChatInput({
                   onClick={openFileDialog}
                   disabled={disabled}
                   className="h-6 sm:h-8 px-1 sm:px-2 hover:bg-gray-100 rounded-md text-gray-500 hover:text-gray-700 text-xs sm:text-sm"
-                  title="Upload CSV file"
+                  title="Upload data file"
                 >
                   <svg
                     className="w-3 h-3 sm:w-4 sm:h-4 mr-1"
@@ -153,20 +159,20 @@ export function ChatInput({
                       d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
                     />
                   </svg>
-                  <span className="hidden sm:inline">Upload CSV</span>
-                  <span className="sm:hidden">CSV</span>
+                  <span className="hidden sm:inline">Upload File</span>
+                  <span className="sm:hidden">File</span>
                 </Button>
               </div>
             )}
           </form>
         </div>
       </div>
-      
+
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv"
+        accept=".csv,.txt,.dat,.json,.xml"
         onChange={handleFileSelect}
         className="hidden"
       />
