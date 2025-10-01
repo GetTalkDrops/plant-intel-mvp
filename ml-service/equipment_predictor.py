@@ -98,13 +98,17 @@ class EquipmentPredictor:
         
         return np.array(labels)
     
-    def train_model(self, facility_id: int = 1):
+    def train_model(self, facility_id: int = 1, batch_id: str = None):
         """Train the equipment failure prediction model"""
-        response = self.supabase.table('work_orders')\
+        query = self.supabase.table('work_orders')\
             .select('*')\
             .eq('facility_id', facility_id)\
-            .eq('demo_mode', True)\
-            .execute()
+            .eq('demo_mode', True)
+        
+        if batch_id:
+            query = query.eq('uploaded_csv_batch', batch_id)
+            
+        response = query.execute()
         
         if not response.data or len(response.data) < 10:
             pass  # Insufficient training data
@@ -127,16 +131,21 @@ class EquipmentPredictor:
         pass  # Model training complete
         return True
     
-    def predict_failures(self, facility_id: int = 1) -> Dict:
+    def predict_failures(self, facility_id: int = 1, batch_id: str = None) -> Dict:
         """Predict equipment failures with realistic probabilities"""
         if not self.is_trained:
-            self.train_model(facility_id)
+            self.train_model(facility_id, batch_id)
         
-        response = self.supabase.table('work_orders')\
+        query = self.supabase.table('work_orders')\
             .select('*')\
             .eq('facility_id', facility_id)\
-            .eq('demo_mode', True)\
-            .execute()
+            .eq('demo_mode', True)
+        
+        if batch_id:
+            query = query.eq('uploaded_csv_batch', batch_id)
+            print(f"Filtering equipment analysis to batch: {batch_id}")
+            
+        response = query.execute()
         
         if not response.data:
             return {"predictions": [], "total_downtime_cost": 0}

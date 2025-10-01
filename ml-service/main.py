@@ -51,20 +51,27 @@ async def get_auto_summary(facility_id: int = 1):
     """Get automatic action alert summary"""
     return auto_analysis.generate_conversational_summary(facility_id)
 
-@app.post("/chat/query")
-async def process_chat_query(query_data: dict):
-    """Process natural language queries and return formatted responses"""
+@app.post("/analyze")
+async def process_analyze_query(query_data: dict):
+    """Process queries with user email for demo account detection"""
     query = query_data.get('query', '')
+    user_email = query_data.get('user_email', '')
     facility_id = query_data.get('facility_id', 1)
+    batch_id = query_data.get('batch_id', None)  # Add this
     
     if not query:
         return {"error": "Query is required"}
     
+    # Demo account detection
+    is_demo = user_email == 'skinner.chris@gmail.com'
+    if is_demo:
+        facility_id = 1
+    
     try:
-        result = query_router.route_query(query, facility_id)
+        result = query_router.route_query(query, facility_id, batch_id)  # Pass batch_id
         return result
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "type": "error"}
 
 @app.get("/chat/query")
 async def process_chat_query_get(query: str, facility_id: int = 1):

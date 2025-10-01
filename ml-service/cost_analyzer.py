@@ -23,6 +23,37 @@ class CostAnalyzer:
         self.model = RandomForestRegressor(n_estimators=50, random_state=42)
         self.scaler = StandardScaler()
         self.is_trained = False
+    
+    def _validate_cost_data(self, df: pd.DataFrame) -> Dict:
+        """Check if required cost fields are present and have data"""
+        required_fields = {
+            'planned_material_cost': 'Planned Material Cost',
+            'actual_material_cost': 'Actual Material Cost',
+            'planned_labor_hours': 'Planned Labor Hours',
+            'actual_labor_hours': 'Actual Labor Hours'
+        }
+        
+        missing_fields = []
+        empty_fields = []
+        
+        for field, display_name in required_fields.items():
+            if field not in df.columns:
+                missing_fields.append(display_name)
+            else:
+                # Check if field has meaningful data (not all null/zero)
+                non_null = df[field].notna().sum()
+                non_zero = (df[field] != 0).sum() if non_null > 0 else 0
+                
+                if non_null == 0 or non_zero == 0:
+                    empty_fields.append(display_name)
+        
+        has_sufficient_data = len(missing_fields) == 0 and len(empty_fields) == 0
+        
+        return {
+            'has_data': has_sufficient_data,
+            'missing_fields': missing_fields,
+            'empty_fields': empty_fields
+        }
         
     def _create_features(self, df: pd.DataFrame) -> np.ndarray:
         """Create features for ML model"""
@@ -56,20 +87,28 @@ class CostAnalyzer:
         
         return np.array(features)
     
-    def train_model(self, facility_id: int = 1):
+    def train_model(self, facility_id: int = 1, batch_id: str = None):
         """Train the cost prediction model"""
         # Get training data
-        response = self.supabase.table('work_orders')\
+        query = self.supabase.table('work_orders')\
             .select('*')\
             .eq('facility_id', facility_id)\
-            .eq('demo_mode', True)\
-            .execute()
+            .eq('demo_mode', True)
+        
+        if batch_id:
+            query = query.eq('uploaded_csv_batch', batch_id)
+            
+        response = query.execute()
         
         if not response.data or len(response.data) < 10:
-            pass  # Insufficient training data
             return False
         
         df = pd.DataFrame(response.data)
+        
+        # Validate data before training
+        validation = self._validate_cost_data(df)
+        if not validation['has_data']:
+            return False
         
         # Create features
         X = self._create_features(df)
@@ -98,23 +137,59 @@ class CostAnalyzer:
         print(f"Model trained on {len(df)} work orders")
         return True
     
-    def predict_cost_variance(self, facility_id: int = 1) -> Dict:
+    def predict_cost_variance(self, facility_id: int = 1, batch_id: str = None) -> Dict:
         """Predict cost variances using ML model"""
-        # Train model if not trained
-        if not self.is_trained:
-            self.train_model(facility_id)
-        
-        # Get data to predict on
-        response = self.supabase.table('work_orders')\
+        # Get data to analyze
+        query = self.supabase.table('work_orders')\
             .select('*')\
             .eq('facility_id', facility_id)\
-            .eq('demo_mode', True)\
-            .execute()
+            .eq('demo_mode', True)
+        
+        # Filter by batch if provided
+        if batch_id:
+            query = query.eq('uploaded_csv_batch', batch_id)
+            print(f"Filtering cost analysis to batch: {batch_id}")
+        
+        response = query.execute()
         
         if not response.data:
-            return {"predictions": [], "total_impact": 0}
-        
+            return {
+                "predictions": [], 
+                "total_impact": 0,
+                "error": "no_data",
+                "message": "No work order data found for analysis."
+            }
+            
         df = pd.DataFrame(response.data)
+        
+        # CRITICAL: Validate cost data exists
+        validation = self._validate_cost_data(df)
+        
+        if not validation['has_data']:
+            missing = validation['missing_fields'] + validation['empty_fields']
+            return {
+                "predictions": [],
+                "total_impact": 0,
+                "error": "insufficient_data",
+                "message": f"Cannot analyze cost variance. Missing or empty fields: {', '.join(missing)}. Please upload data with both planned and actual cost information.",
+                "required_fields": [
+                    "Planned Material Cost",
+                    "Actual Material Cost", 
+                    "Planned Labor Hours",
+                    "Actual Labor Hours"
+                ]
+            }
+        
+        # Train model if not trained
+        if not self.is_trained:
+            trained = self.train_model(facility_id, batch_id)
+            if not trained:
+                return {
+                    "predictions": [],
+                    "total_impact": 0,
+                    "error": "training_failed",
+                    "message": "Unable to train cost prediction model. Insufficient historical data."
+                }
         
         # Create features and predict
         X = self._create_features(df)

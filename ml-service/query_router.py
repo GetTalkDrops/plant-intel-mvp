@@ -17,8 +17,8 @@ class EnhancedQueryRouter:
         self.templates = ConversationalTemplates()
         self.preprocessor = QueryPreprocessor()
         
-    def route_query(self, query: str, facility_id: int = 1) -> Dict:
-        """Enhanced routing with robust query preprocessing"""
+    def route_query(self, query: str, facility_id: int = 1, batch_id: str = None) -> Dict:
+        """Enhanced routing with batch filtering"""
         
         # Preprocess query for typos and variations
         corrected_query, was_corrected = self.preprocessor.suggest_correction(query)
@@ -41,25 +41,25 @@ class EnhancedQueryRouter:
         # Priority 3: Category-based routing using fuzzy matching
         if 'cost' in categories:
             return self._add_correction_note(
-                self._format_cost_response(facility_id, query), 
+                self._format_cost_response(facility_id, query, batch_id), 
                 query, corrected_query, was_corrected
             )
         
         if 'equipment' in categories and ('maintenance' in categories or 'need' in query_lower):
             return self._add_correction_note(
-                self._format_equipment_response(facility_id, query),
+                self._format_equipment_response(facility_id, query, batch_id),
                 query, corrected_query, was_corrected
             )
         
         if 'quality' in categories and not any(cat in categories for cat in ['plant', 'facility']):
             return self._add_correction_note(
-                self._format_quality_response(facility_id, query),
+                self._format_quality_response(facility_id, query, batch_id),
                 query, corrected_query, was_corrected
             )
         
         if 'efficiency' in categories:
             return self._add_correction_note(
-                self._format_efficiency_response(facility_id, query),
+                self._format_efficiency_response(facility_id, query, batch_id),
                 query, corrected_query, was_corrected
             )
         
@@ -88,10 +88,29 @@ class EnhancedQueryRouter:
         
         return response
     
-    # Include all the existing format methods from the previous router...
-    def _format_cost_response(self, facility_id: int, query: str) -> Dict:
-        result = self.cost_analyzer.predict_cost_variance(facility_id)
+    def _format_cost_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
+        result = self.cost_analyzer.predict_cost_variance(facility_id, batch_id)
         
+        # Check for data validation errors
+        if 'error' in result:
+            if result['error'] == 'insufficient_data':
+                # Return the honest error message about missing fields
+                return {
+                    'type': 'cost_analysis',
+                    'message': result['message'],
+                    'insights': [],
+                    'total_impact': 0,
+                    'required_fields': result.get('required_fields', [])
+                }
+            elif result['error'] == 'no_data':
+                return {
+                    'type': 'cost_analysis',
+                    'message': result['message'],
+                    'insights': [],
+                    'total_impact': 0
+                }
+        
+        # Original logic for when data exists
         if not result['predictions']:
             return {
                 'type': 'cost_analysis',
@@ -113,8 +132,8 @@ class EnhancedQueryRouter:
             'total_impact': result['total_impact']
         }
     
-    def _format_equipment_response(self, facility_id: int, query: str) -> Dict:
-        result = self.equipment_predictor.predict_failures(facility_id)
+    def _format_equipment_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
+        result = self.equipment_predictor.predict_failures(facility_id, batch_id)
         
         if not result['predictions']:
             return {
@@ -148,8 +167,8 @@ class EnhancedQueryRouter:
             'total_impact': result['total_downtime_cost']
         }
     
-    def _format_quality_response(self, facility_id: int, query: str) -> Dict:
-        result = self.quality_analyzer.analyze_quality_patterns(facility_id)
+    def _format_quality_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
+        result = self.quality_analyzer.analyze_quality_patterns(facility_id, batch_id)
         
         if not result['quality_issues']:
             return {
@@ -173,8 +192,8 @@ class EnhancedQueryRouter:
             'total_impact': result['total_scrap_cost']
         }
     
-    def _format_efficiency_response(self, facility_id: int, query: str) -> Dict:
-        result = self.efficiency_analyzer.analyze_efficiency_patterns(facility_id)
+    def _format_efficiency_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
+        result = self.efficiency_analyzer.analyze_efficiency_patterns(facility_id, batch_id)
         
         if not result['efficiency_insights']:
             return {
