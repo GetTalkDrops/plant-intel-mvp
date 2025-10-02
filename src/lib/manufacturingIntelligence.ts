@@ -1,4 +1,6 @@
 import { enhanceMLResponse } from "./aiService";
+import { formatCostAnalysisResponse } from "./format-ml-response";
+import { InsightCard } from "./insight-types";
 
 export type ChatMessage = {
   id: string;
@@ -10,6 +12,8 @@ export type ChatMessage = {
 
 export type ManufacturingInsight = {
   response: string;
+  cards?: InsightCard[];
+  followUps?: string[];
   costImpact?: number;
   alertsCreated?: number;
 };
@@ -20,64 +24,52 @@ export type AIUsageStats = {
   monthlyBudget: number;
 };
 
-interface AutoSummaryResponse {
-  type: string;
-  message: string;
-  alerts: Array<{
-    id: string;
-    type: string;
-    message: string;
-    impact: number;
-  }>;
-  total_impact: number;
-  summary_stats: {
-    cost_issues: number;
-    equipment_issues: number;
-    quality_issues: number;
-    efficiency_opportunities: number;
-  };
-}
-
 interface MLChatResponse {
   type: string;
-  message: string;
+  message?: string;
   insights: {
     equipment?: string[];
     cost_variance?: number;
     quality_issues?: string[];
   };
-  total_impact: number;
-}
-
-async function callAutoSummary(
-  facilityId: number = 1
-): Promise<AutoSummaryResponse> {
-  const response = await fetch(
-    `http://localhost:8000/analyze/auto-summary?facility_id=${facilityId}`
-  );
-
-  if (!response.ok) {
-    throw new Error(`Auto-analysis error: ${response.status}`);
-  }
-
-  return response.json();
+  total_impact?: number;
+  predictions?: Array<{
+    work_order_number: string;
+    predicted_variance: number;
+    confidence: number;
+    risk_level: string;
+  }>;
+  error?: string;
 }
 
 async function callMLChatService(
   query: string,
+  userEmail: string,
   facilityId: number = 1
 ): Promise<MLChatResponse> {
-  const response = await fetch(
-    `http://localhost:8000/chat/query?query=${encodeURIComponent(
-      query
-    )}&facility_id=${facilityId}`
-  );
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: query,
+      userEmail: userEmail,
+    }),
+  });
 
   if (!response.ok) {
-    throw new Error(`ML service error: ${response.status}`);
+    throw new Error(`Chat API error: ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+
+  return {
+    type: data.type || "chat_response",
+    message: data.response || data.message,
+    insights: data.insights || {},
+    total_impact: data.totalImpact || data.total_impact || 0,
+    predictions: data.predictions,
+    error: data.error,
+  };
 }
 
 function shouldUseAI(query: string, mlResponse: string): boolean {
@@ -102,35 +94,56 @@ function shouldUseAI(query: string, mlResponse: string): boolean {
 
 export async function processManufacturingQuery(
   query: string,
-  facilityId?: number,
+  userEmail?: string,
   useAI: boolean = true
 ): Promise<ManufacturingInsight> {
-  const targetFacility = facilityId || 1;
-  const queryLower = query.toLowerCase().trim();
+  const email = userEmail || "skinner.chris@gmail.com";
 
   try {
-    let mlResponse: AutoSummaryResponse | MLChatResponse;
-    let isAutoSummary = false;
+    const mlResponse = await callMLChatService(query, email, 1);
+
+    const isCostQuery =
+      query.toLowerCase().includes("cost") ||
+      query.toLowerCase().includes("variance") ||
+      query.toLowerCase().includes("budget");
 
     if (
-      queryLower.includes("show me how") ||
-      queryLower === "demo" ||
-      queryLower === ""
+      isCostQuery &&
+      mlResponse.predictions &&
+      mlResponse.predictions.length > 0
     ) {
-      mlResponse = await callAutoSummary(targetFacility);
-      isAutoSummary = true;
-    } else {
-      mlResponse = await callMLChatService(query, targetFacility);
+      console.log("Cost query detected, predictions:", mlResponse.predictions);
+
+      const formatted = formatCostAnalysisResponse({
+        predictions: mlResponse.predictions as Array<{
+          work_order_number: string;
+          predicted_variance: number;
+          confidence: number;
+          risk_level: "high" | "medium" | "low";
+        }>,
+        total_impact: mlResponse.total_impact,
+        error: mlResponse.error,
+        message: mlResponse.message,
+      });
+
+      console.log("Formatted response:", formatted);
+
+      return {
+        response: formatted.text,
+        cards: formatted.cards,
+        followUps: formatted.followUps,
+        costImpact: mlResponse.total_impact || 0,
+      };
     }
 
-    let finalResponse = mlResponse.message;
+    let finalResponse = mlResponse.message || "Analysis complete";
 
-    if (useAI && shouldUseAI(query, mlResponse.message)) {
+    if (useAI && shouldUseAI(query, finalResponse)) {
       try {
         const aiResult = await enhanceMLResponse(
-          mlResponse.message,
+          finalResponse,
           query,
-          mlResponse.total_impact
+          mlResponse.total_impact || 0
         );
 
         if (aiResult.usedAI) {
@@ -147,16 +160,13 @@ export async function processManufacturingQuery(
     return {
       response: finalResponse,
       costImpact: mlResponse.total_impact || 0,
-      alertsCreated: isAutoSummary
-        ? (mlResponse as AutoSummaryResponse).alerts.length
-        : undefined,
     };
   } catch (error) {
     console.error("ML service error:", error);
 
     return {
       response:
-        "I can analyze your manufacturing data for cost variance, equipment risks, quality issues, and operational efficiency. Try asking 'Show me how this works' to see a demo analysis.",
+        "I can analyze your manufacturing data for cost variance, equipment risks, quality issues, and operational efficiency. Try asking about equipment or cost analysis.",
     };
   }
 }

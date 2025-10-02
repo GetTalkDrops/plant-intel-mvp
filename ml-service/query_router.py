@@ -128,7 +128,7 @@ class EnhancedQueryRouter:
         return {
             'type': 'cost_analysis',
             'message': message,
-            'insights': result['predictions'],
+            'predictions': result['predictions'],
             'total_impact': result['total_impact']
         }
     

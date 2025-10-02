@@ -13,13 +13,15 @@ import {
 } from "@/lib/manufacturingIntelligence";
 import { processFileUpload, type ColumnMapping } from "@/lib/csvMapper";
 import { useAuth } from "@/contexts/AuthContext";
+import { InsightCard } from "@/lib/insight-types";
 
 type ChatMessage = {
   id: string;
   message: string;
   isUser: boolean;
   timestamp: string;
-  costImpact?: number;
+  cards?: InsightCard[];
+  followUps?: string[];
 };
 
 interface CSVMappingResponse {
@@ -55,7 +57,15 @@ export function UnifiedChatInterface() {
   const [landingChatInput, setLandingChatInput] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // Auto-scroll ref
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const isEmpty = messages.length === 0 && !isLoading;
+
+  // Auto-scroll effect
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleSendMessage = async (message: string) => {
     const userMessage: ChatMessage = {
@@ -81,22 +91,16 @@ export function UnifiedChatInterface() {
         true
       );
 
-      let responseText = insight.response;
-
-      if (newQueryCount >= 5) {
-        responseText +=
-          "\n\n---\nSee what's possible with your actual production data → [Start Free Trial]";
-      }
-
       const aiResponse: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        message: responseText,
+        message: insight.response,
         isUser: false,
         timestamp: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
         }),
-        costImpact: insight.costImpact,
+        cards: insight.cards,
+        followUps: insight.followUps,
       };
 
       setMessages((prev) => [...prev, aiResponse]);
@@ -262,7 +266,6 @@ export function UnifiedChatInterface() {
         setShowMappingModal(true);
         setIsLoading(false);
       } else {
-        // Auto-confirm with saved mapping - call directly with data
         await handleMappingConfirmDirect({
           mappings: mappingsList,
           unmappedColumns: unmappedList,
@@ -363,7 +366,8 @@ You can try uploading again or contact support if the issue persists.`,
               hour: "2-digit",
               minute: "2-digit",
             }),
-            costImpact: uploadResult.autoAnalysis.costImpact,
+            cards: uploadResult.autoAnalysis.cards,
+            followUps: uploadResult.autoAnalysis.followUps,
           };
 
           setTimeout(() => {
@@ -459,7 +463,8 @@ You can try uploading again or contact support if the issue persists.`,
               hour: "2-digit",
               minute: "2-digit",
             }),
-            costImpact: uploadResult.autoAnalysis.costImpact,
+            cards: uploadResult.autoAnalysis.cards,
+            followUps: uploadResult.autoAnalysis.followUps,
           };
 
           setTimeout(() => {
@@ -660,7 +665,7 @@ You can try uploading again or contact support if the issue persists.`,
                   <Input
                     value={landingChatInput}
                     onChange={(e) => setLandingChatInput(e.target.value)}
-                    placeholder="Tell me what you manufacture..."
+                    placeholder="Ask about costs, quality, equipment, or efficiency..."
                     className="text-sm h-16 pr-12 resize-none"
                     style={{ lineHeight: "1.4" }}
                   />
@@ -832,8 +837,9 @@ You can try uploading again or contact support if the issue persists.`,
               key={message.id}
               message={message.message}
               isUser={message.isUser}
-              costImpact={message.costImpact}
               timestamp={message.timestamp}
+              cards={message.cards}
+              followUps={message.followUps}
             />
           ))}
 
@@ -844,6 +850,7 @@ You can try uploading again or contact support if the issue persists.`,
               timestamp="Now"
             />
           )}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 

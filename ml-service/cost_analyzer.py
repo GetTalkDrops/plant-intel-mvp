@@ -209,7 +209,7 @@ class CostAnalyzer:
                     'work_order_number': row['work_order_number'],
                     'predicted_variance': round(predicted_variance, 0),
                     'confidence': round(confidence, 0),
-                    'risk_level': 'high' if abs(predicted_variance) > 3000 else 'medium'
+                    'risk_level': 'high' if abs(predicted_variance) > 5000 else 'medium'
                 })
         
         # Sort by absolute variance
@@ -218,6 +218,6 @@ class CostAnalyzer:
         total_impact = sum(abs(r['predicted_variance']) for r in results[:5])
         
         return {
-            "predictions": results[:5],
+            "predictions": results[:20],
             "total_impact": total_impact
         }
