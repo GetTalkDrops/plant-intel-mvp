@@ -83,13 +83,68 @@ export function InsightCard({ card }: InsightCardProps) {
                   {section.items.map((item, itemIdx) => (
                     <div
                       key={itemIdx}
-                      className="flex justify-between items-center py-1 text-sm"
+                      className="py-2 border-b border-gray-200 last:border-0"
                     >
-                      <span className="text-gray-800">{item.id}</span>
-                      <span className="text-gray-600">
-                        ${item.amount.toLocaleString()} ({item.confidence}%
-                        confidence)
-                      </span>
+                      {/* Work Order ID and Amount */}
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-medium text-gray-900">
+                          {item.id}
+                        </span>
+                        <span className="text-gray-700 font-semibold">
+                          ${item.amount.toLocaleString()} ({item.confidence}%
+                          confidence)
+                        </span>
+                      </div>
+
+                      {/* NEW: Variance Breakdown */}
+                      {item.breakdown && (
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">
+                              Materials: {item.breakdown.material.driver}
+                            </span>
+                            <span
+                              className={`font-medium ${
+                                item.breakdown.material.variance >= 0
+                                  ? "text-red-600"
+                                  : "text-green-600"
+                              }`}
+                            >
+                              {item.breakdown.material.variance >= 0 ? "+" : ""}
+                              $
+                              {item.breakdown.material.variance.toLocaleString()}
+                              <span className="text-gray-500 ml-1">
+                                ({item.breakdown.material.percentage}%)
+                              </span>
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">
+                              Labor: {item.breakdown.labor.driver}
+                            </span>
+                            <span
+                              className={`font-medium ${
+                                item.breakdown.labor.variance >= 0
+                                  ? "text-red-600"
+                                  : "text-green-600"
+                              }`}
+                            >
+                              {item.breakdown.labor.variance >= 0 ? "+" : ""}$
+                              {item.breakdown.labor.variance.toLocaleString()}
+                              <span className="text-gray-500 ml-1">
+                                ({item.breakdown.labor.percentage}%)
+                              </span>
+                            </span>
+                          </div>
+                          {item.breakdown.primary_driver && (
+                            <div className="mt-1 pt-1 border-t border-gray-100">
+                              <span className="text-xs font-medium text-gray-700">
+                                Primary driver: {item.breakdown.primary_driver}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
 

@@ -91,10 +91,28 @@ class EnhancedQueryRouter:
     def _format_cost_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
         result = self.cost_analyzer.predict_cost_variance(facility_id, batch_id)
         
-        # Check for data validation errors
+        # Handle new status-based response
+        if result.get('status') == 'insufficient_data':
+            validation = result.get('validation', {})
+            message = f"⚠️ **Data Quality Alert**\n\n"
+            message += f"Data quality is too low for reliable cost analysis.\n\n"
+            message += f"**Quality Score: {validation.get('score', 0)}/100** ({validation.get('grade', 'poor')})\n\n"
+            if validation.get('warnings'):
+                message += "**Issues Found:**\n"
+                for warning in validation['warnings']:
+                    message += f"• {warning}\n"
+            message += "\nPlease upload data with more complete cost information."
+            
+            return {
+                'type': 'cost_analysis',
+                'message': message,
+                'insights': [],
+                'total_impact': 0
+            }
+        
+        # Handle old error format (backward compatibility)
         if 'error' in result:
             if result['error'] == 'insufficient_data':
-                # Return the honest error message about missing fields
                 return {
                     'type': 'cost_analysis',
                     'message': result['message'],
@@ -110,26 +128,52 @@ class EnhancedQueryRouter:
                     'total_impact': 0
                 }
         
-        # Original logic for when data exists
-        if not result['predictions']:
+        # Handle success case with new format
+        predictions = result.get('predictions', [])
+        validation = result.get('validation', {})
+        thresholds = result.get('thresholds', {})
+        
+        if not predictions:
+            message = "Good news! No significant cost variances detected in your data. All work orders are tracking close to planned costs."
+            
+            # Add data quality note if not excellent
+            if validation and validation.get('score', 100) < 85:
+                message += f"\n\n📊 **Data Quality: {validation['score']}/100** ({validation['grade']})"
+                if validation.get('limitations'):
+                    message += "\n" + "\n".join(f"• {lim}" for lim in validation['limitations'])
+            
+            # Add threshold info
+            if thresholds and thresholds.get('variance_threshold'):
+                message += f"\n\n*Analysis threshold: ${thresholds['variance_threshold']:,.0f} ({thresholds.get('variance_threshold_pct', 5)}% of average work order value)*"
+            
             return {
                 'type': 'cost_analysis',
-                'message': "Your cost tracking looks good - no work orders are showing significant budget risk patterns right now.",
+                'message': message,
                 'insights': [],
                 'total_impact': 0
             }
         
-        top_risk = result['predictions'][0]
-        message = f"I'm tracking **{len(result['predictions'])} work orders** that might go over budget.\n\n"
-        message += f"Your biggest concern is **{top_risk['work_order_number']}** - it's showing **${top_risk['predicted_variance']:,.0f}** potential overrun with **{top_risk['confidence']}% confidence**.\n\n"
-        message += f"**Total budget exposure:** ${result['total_impact']:,.0f}\n\n"
+        # Format predictions
+        top_risk = predictions[0]
+        message = f"I'm tracking **{len(predictions)} work orders** with significant cost variances.\n\n"
+        message += f"Your biggest concern is **{top_risk['work_order_number']}** - showing **${abs(top_risk['predicted_variance']):,.0f}** variance with **{top_risk['confidence']}% confidence**.\n\n"
+        
+        if result.get('total_impact'):
+            message += f"**Total cost exposure:** ${result['total_impact']:,.0f}\n\n"
+        
+        # Add data quality note if present and not excellent
+        if validation and validation.get('score', 100) < 85:
+            message += f"📊 **Data Quality: {validation['score']}/100** ({validation['grade']})\n"
+            if validation.get('limitations'):
+                message += "\n".join(f"• {lim}" for lim in validation['limitations'][:2]) + "\n\n"
+        
         message += f"**My recommendation:** Review material costs and labor planning for {top_risk['work_order_number']} first."
         
         return {
             'type': 'cost_analysis',
             'message': message,
-            'predictions': result['predictions'],
-            'total_impact': result['total_impact']
+            'predictions': predictions,
+            'total_impact': result.get('total_impact', 0)
         }
     
     def _format_equipment_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:

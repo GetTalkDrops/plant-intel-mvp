@@ -12,17 +12,39 @@ export interface InsightCard {
     severity: "critical" | "warning";
     label: string;
     count: number;
-    items: Array<{
-      id: string;
-      amount: number;
-      confidence: number;
-    }>;
+    items: InsightItem[];
     actions: string[];
   }>;
 }
 
+export interface InsightItem {
+  id: string;
+  amount: number;
+  confidence: number;
+  breakdown?: {
+    material: {
+      planned: number;
+      actual: number;
+      variance: number;
+      percentage: number;
+      variance_pct: number;
+      driver: string;
+    };
+    labor: {
+      planned: number;
+      actual: number;
+      variance: number;
+      percentage: number;
+      variance_pct: number;
+      hours_variance: number;
+      driver: string;
+    };
+    primary_driver: "material" | "labor";
+  };
+}
+
 export interface AssistantMessage {
-  text: string; // main message text
-  cards?: InsightCard[]; // 0-2 styled cards
-  followUps?: string[]; // suggested next questions
+  text: string;
+  cards?: InsightCard[];
+  followUps?: string[];
 }
