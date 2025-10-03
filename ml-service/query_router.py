@@ -34,9 +34,9 @@ class EnhancedQueryRouter:
                 return self._add_correction_note(follow_up, query, corrected_query, was_corrected)
         
         # Priority 2: Data limitation cases
-        data_response = self.data_responder.get_data_aware_response(corrected_query, facility_id)
-        if data_response:
-            return self._add_correction_note(data_response, query, corrected_query, was_corrected)
+        # data_response = self.data_responder.get_data_aware_response(corrected_query, facility_id)
+        #if data_response:
+        #    return self._add_correction_note(data_response, query, corrected_query, was_corrected)
         
         # Priority 3: Category-based routing using fuzzy matching
         if 'cost' in categories:
@@ -45,13 +45,13 @@ class EnhancedQueryRouter:
                 query, corrected_query, was_corrected
             )
         
-        if 'equipment' in categories and ('maintenance' in categories or 'need' in query_lower):
+        if 'equipment' in categories:
             return self._add_correction_note(
                 self._format_equipment_response(facility_id, query, batch_id),
                 query, corrected_query, was_corrected
             )
         
-        if 'quality' in categories and not any(cat in categories for cat in ['plant', 'facility']):
+        if 'quality' in categories: 
             return self._add_correction_note(
                 self._format_quality_response(facility_id, query, batch_id),
                 query, corrected_query, was_corrected
@@ -82,7 +82,6 @@ class EnhancedQueryRouter:
     def _add_correction_note(self, response: Dict, original: str, corrected: str, was_corrected: bool) -> Dict:
         """Add correction note if query was significantly changed"""
         if was_corrected and original.lower() != corrected.lower():
-            # Add subtle correction note
             correction_note = f"\n\n*Interpreting: '{corrected}'*"
             response['message'] = response['message'] + correction_note
         
@@ -91,7 +90,6 @@ class EnhancedQueryRouter:
     def _format_cost_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
         result = self.cost_analyzer.predict_cost_variance(facility_id, batch_id)
         
-        # Handle new status-based response
         if result.get('status') == 'insufficient_data':
             validation = result.get('validation', {})
             message = f"⚠️ **Data Quality Alert**\n\n"
@@ -110,7 +108,6 @@ class EnhancedQueryRouter:
                 'total_impact': 0
             }
         
-        # Handle old error format (backward compatibility)
         if 'error' in result:
             if result['error'] == 'insufficient_data':
                 return {
@@ -128,7 +125,6 @@ class EnhancedQueryRouter:
                     'total_impact': 0
                 }
         
-        # Handle success case with new format
         predictions = result.get('predictions', [])
         validation = result.get('validation', {})
         thresholds = result.get('thresholds', {})
@@ -136,13 +132,11 @@ class EnhancedQueryRouter:
         if not predictions:
             message = "Good news! No significant cost variances detected in your data. All work orders are tracking close to planned costs."
             
-            # Add data quality note if not excellent
             if validation and validation.get('score', 100) < 85:
                 message += f"\n\n📊 **Data Quality: {validation['score']}/100** ({validation['grade']})"
                 if validation.get('limitations'):
                     message += "\n" + "\n".join(f"• {lim}" for lim in validation['limitations'])
             
-            # Add threshold info
             if thresholds and thresholds.get('variance_threshold'):
                 message += f"\n\n*Analysis threshold: ${thresholds['variance_threshold']:,.0f} ({thresholds.get('variance_threshold_pct', 5)}% of average work order value)*"
             
@@ -153,7 +147,6 @@ class EnhancedQueryRouter:
                 'total_impact': 0
             }
         
-        # Format predictions
         top_risk = predictions[0]
         message = f"I'm tracking **{len(predictions)} work orders** with significant cost variances.\n\n"
         message += f"Your biggest concern is **{top_risk['work_order_number']}** - showing **${abs(top_risk['predicted_variance']):,.0f}** variance with **{top_risk['confidence']}% confidence**.\n\n"
@@ -161,7 +154,6 @@ class EnhancedQueryRouter:
         if result.get('total_impact'):
             message += f"**Total cost exposure:** ${result['total_impact']:,.0f}\n\n"
         
-        # Add data quality note if present and not excellent
         if validation and validation.get('score', 100) < 85:
             message += f"📊 **Data Quality: {validation['score']}/100** ({validation['grade']})\n"
             if validation.get('limitations'):
@@ -179,7 +171,15 @@ class EnhancedQueryRouter:
     def _format_equipment_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
         result = self.equipment_predictor.predict_failures(facility_id, batch_id)
         
-        if not result['predictions']:
+        if result.get('message'):
+            return {
+                'type': 'equipment_analysis',
+                'message': result['message'],
+                'insights': [],
+                'total_impact': 0
+            }
+        
+        if not result['predictions'] or len(result['predictions']) == 0:
             return {
                 'type': 'equipment_analysis',
                 'message': "Your equipment is performing well - no assets are showing failure risk patterns right now.",
@@ -188,21 +188,40 @@ class EnhancedQueryRouter:
             }
         
         top_risk = result['predictions'][0]
-        details = top_risk.get('analysis_details', {})
+        analysis = top_risk.get('analysis', {})
+        breakdown = analysis.get('breakdown', {})
         
-        message = f"**{top_risk['equipment_id']}** needs attention - **{top_risk['failure_probability']:.1f}% failure risk** with **${top_risk['estimated_downtime_cost']:,.0f}** potential downtime cost.\n\n"
+        message = f"**{top_risk['equipment_id']}** needs attention - **{top_risk['failure_probability']:.0f}% failure risk**\n\n"
+        message += f"**Total Cost Impact: ${top_risk['estimated_downtime_cost']:,}**\n\n"
         
-        if details:
-            message += f"What's happening: {details.get('total_scrap_units', 0)} scrap units and {details.get('avg_labor_variance', 0):.1f} hour average overruns across {top_risk['orders_analyzed']} orders. "
+        if breakdown:
+            message += "**Impact Breakdown:**\n"
+            if breakdown.get('labor', {}).get('impact', 0) > 0:
+                labor = breakdown['labor']
+                message += f"• Labor: ${labor['impact']:,} ({labor['percentage']:.0f}%) - {labor['driver']}\n"
+            
+            if breakdown.get('quality', {}).get('impact', 0) > 0:
+                quality = breakdown['quality']
+                message += f"• Quality: ${quality['impact']:,} ({quality['percentage']:.0f}%) - {quality['driver']}\n"
+            
+            if breakdown.get('material_waste', {}).get('impact', 0) > 0:
+                material = breakdown['material_waste']
+                message += f"• Material Waste: ${material['impact']:,} ({material['percentage']:.0f}%)\n"
+            
+            message += f"\n**Primary Issue:** {analysis.get('primary_issue', 'unknown').replace('_', ' ').title()}\n"
         
-        message += "This pattern suggests the equipment needs preventive maintenance.\n\n"
+        message += f"\n**Orders Analyzed:** {top_risk['orders_analyzed']}\n\n"
         
-        timeline = "this week" if top_risk['failure_probability'] > 75 else "within 2 weeks"
-        message += f"**My recommendation:** Schedule maintenance for {top_risk['equipment_id']} {timeline}. "
-        message += f"Acting now prevents **${int(top_risk['estimated_downtime_cost'] * 1.5):,.0f}** in emergency repair costs."
+        primary = analysis.get('primary_issue', 'labor')
+        if primary == 'labor':
+            message += "**Recommendation:** Schedule maintenance for this equipment. Performance degradation is causing labor overruns."
+        elif primary == 'quality':
+            message += "**Recommendation:** Immediate inspection required. Quality issues are causing significant scrap."
+        else:
+            message += "**Recommendation:** Address quality issues to reduce material waste."
         
         if len(result['predictions']) > 1:
-            message += f"\n\nI also see issues with **{result['predictions'][1]['equipment_id']}** - ask if you want details."
+            message += f"\n\n*Also monitoring {len(result['predictions']) - 1} other equipment with elevated risk.*"
         
         return {
             'type': 'equipment_analysis',
@@ -210,11 +229,11 @@ class EnhancedQueryRouter:
             'insights': result['predictions'],
             'total_impact': result['total_downtime_cost']
         }
-    
+
     def _format_quality_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
         result = self.quality_analyzer.analyze_quality_patterns(facility_id, batch_id)
         
-        if not result['quality_issues']:
+        if not result['quality_issues'] or len(result['quality_issues']) == 0:
             return {
                 'type': 'quality_analysis',
                 'message': f"Quality looks solid - overall scrap rate of {result['overall_scrap_rate']} units per order is within normal range.",
@@ -223,11 +242,41 @@ class EnhancedQueryRouter:
             }
         
         top_issue = result['quality_issues'][0]
+        analysis = top_issue.get('analysis', {})
+        breakdown = analysis.get('breakdown', {})
         
-        message = f"Quality is slipping - **{result['overall_scrap_rate']} units scrapped per order** on average.\n\n"
-        message += f"**{top_issue['material_code']}** is your biggest problem: {top_issue['scrap_rate_per_order']} scrap per order, {top_issue['quality_issue_rate']}% of orders have issues, costing **${top_issue['estimated_cost_impact']:,.0f}**.\n\n"
-        message += f"**My recommendation:** Start with {top_issue['material_code']} - audit your supplier or check process controls. "
-        message += f"Fixing this could save **${int(top_issue['estimated_cost_impact'] * 0.7):,.0f}** monthly."
+        message = f"Quality issues detected with **{top_issue['material_code']}**\n\n"
+        message += f"**Total Cost Impact: ${top_issue['estimated_cost_impact']:,}**\n\n"
+        
+        if breakdown:
+            message += "**Cost Breakdown:**\n"
+            if breakdown.get('scrap', {}).get('cost', 0) > 0:
+                scrap = breakdown['scrap']
+                message += f"• Scrap: ${scrap['cost']:,} ({scrap['percentage']:.0f}%) - {scrap['driver']}\n"
+            
+            if breakdown.get('rework', {}).get('cost', 0) > 0:
+                rework = breakdown['rework']
+                message += f"• Rework Labor: ${rework['cost']:,} ({rework['percentage']:.0f}%) - {rework['driver']}\n"
+            
+            if breakdown.get('material_waste', {}).get('cost', 0) > 0:
+                waste = breakdown['material_waste']
+                message += f"• Material Waste: ${waste['cost']:,} ({waste['percentage']:.0f}%)\n"
+            
+            message += f"\n**Primary Driver:** {analysis.get('primary_driver', 'unknown').title()}\n"
+        
+        message += f"\n**Issue Rate:** {top_issue['quality_issue_rate']:.1f}% of orders affected\n"
+        message += f"**Scrap Rate:** {top_issue['scrap_rate_per_order']:.1f} units per order\n\n"
+        
+        primary = analysis.get('primary_driver', 'scrap')
+        if primary == 'scrap':
+            message += f"**Recommendation:** Investigate {top_issue['material_code']} supplier quality. High scrap rate indicates material or process issues."
+        elif primary == 'rework':
+            message += f"**Recommendation:** Review production process for {top_issue['material_code']}. Excessive rework time suggests training or equipment issues."
+        else:
+            message += "**Recommendation:** Audit material usage procedures to reduce waste."
+        
+        if len(result['quality_issues']) > 1:
+            message += f"\n\n*Also found issues with {len(result['quality_issues']) - 1} other materials.*"
         
         return {
             'type': 'quality_analysis',
