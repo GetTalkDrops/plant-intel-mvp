@@ -454,24 +454,38 @@ You can try uploading again or contact support if the issue persists.`,
         };
         setMessages((prev) => [...prev, successMessage]);
 
-        if (uploadResult.autoAnalysis) {
-          const analysisMessage: ChatMessage = {
-            id: "analysis-" + (Date.now() + 1).toString(),
-            message: uploadResult.autoAnalysis.message,
+        if (uploadResult.autoAnalysis && !uploadResult.autoAnalysis.error) {
+          // Executive summary first
+          const summaryMessage: ChatMessage = {
+            id: "summary-" + Date.now().toString(),
+            message: uploadResult.autoAnalysis.executiveSummary,
             isUser: false,
             timestamp: new Date().toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
             }),
-            cards: uploadResult.autoAnalysis.cards,
-            followUps: uploadResult.autoAnalysis.followUps,
           };
 
+          // Cost analysis with cards (if exists)
+          const messages: ChatMessage[] = [summaryMessage];
+
+          if (uploadResult.autoAnalysis.cost) {
+            messages.push({
+              id: "cost-" + (Date.now() + 1).toString(),
+              message: uploadResult.autoAnalysis.cost.text,
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              cards: uploadResult.autoAnalysis.cost.cards,
+              followUps: uploadResult.autoAnalysis.cost.followUps,
+            });
+          }
+
           setTimeout(() => {
-            setMessages((prev) => [...prev, analysisMessage]);
-            setIsLoading(false);
+            setMessages((prev) => [...prev, ...messages]);
           }, 1000);
-          return;
         }
       } else {
         throw new Error(uploadResult.error || "Upload failed");
