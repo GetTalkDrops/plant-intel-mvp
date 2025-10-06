@@ -21,12 +21,12 @@ class ConversationalTemplates:
             return self._mat_1800_details(query_lower, context_data)
         
         # General equipment questions
-        if any(word in query_lower for word in ['equipment', 'maintenance', 'failure']):
-            return self._equipment_follow_up(query_lower)
+       # if any(word in query_lower for word in ['equipment', 'maintenance', 'failure']):
+        #    return self._equipment_follow_up(query_lower)
         
         # Quality follow-ups
-        if any(word in query_lower for word in ['quality', 'scrap', 'defect']):
-            return self._quality_follow_up(query_lower)
+       # if any(word in query_lower for word in ['quality', 'scrap', 'defect']):
+        #    return self._quality_follow_up(query_lower)
         
         # Cost calculation questions
         if any(word in query_lower for word in ['calculate', 'calculation', 'how did you']):

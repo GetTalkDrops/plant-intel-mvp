@@ -49,12 +49,10 @@ class EfficiencyAnalyzer:
         response = query.execute()
         
         if not response.data or len(response.data) < 10:
-            pass  # Insufficient training data
             return False
         
         df = pd.DataFrame(response.data)
         
-        # Analyze by operation type
         operation_data = {}
         for _, order in df.iterrows():
             parts = order['work_order_number'].split('-')
@@ -67,11 +65,9 @@ class EfficiencyAnalyzer:
                     'efficiencies': []
                 }
             
-            # Calculate variances
             labor_var = (order['actual_labor_hours'] or 0) - (order['planned_labor_hours'] or 0)
             cost_var = (order['actual_material_cost'] or 0) - (order['planned_material_cost'] or 0)
             
-            # Calculate efficiency
             if order['actual_labor_hours'] and order['actual_labor_hours'] > 0:
                 efficiency = (order['planned_labor_hours'] or 0) / order['actual_labor_hours'] * 100
             else:
@@ -81,9 +77,8 @@ class EfficiencyAnalyzer:
             operation_data[op_type]['cost_variances'].append(cost_var)
             operation_data[op_type]['efficiencies'].append(efficiency)
         
-        # Prepare training data
         X = []
-        y = []  # Target: potential savings opportunity
+        y = []
         
         for op_type, data in operation_data.items():
             if len(data['labor_variances']) < 2:
@@ -95,35 +90,30 @@ class EfficiencyAnalyzer:
             total_orders = len(data['labor_variances'])
             consistency = np.std(data['labor_variances'])
             
-            # Calculate efficiency metrics
             labor_eff = max(0, avg_efficiency)
             cost_eff = max(0, 100 - abs(avg_cost_var) / 100)
             
             features = [avg_labor_var, avg_cost_var, total_orders, labor_eff, cost_eff, consistency]
-            
-            # Target: potential savings (higher variance = more savings opportunity)
-            potential_savings = abs(avg_labor_var) * 25 * total_orders + abs(avg_cost_var) * 0.3 * total_orders
+            potential_savings = abs(avg_labor_var) * 200 * total_orders + abs(avg_cost_var) * 0.3 * total_orders
             
             X.append(features)
             y.append(potential_savings)
         
         if len(X) == 0:
-            print("No valid operation data for training")
             return False
         
         X = np.array(X)
         y = np.array(y)
         
-        # Train model
         X_scaled = self.scaler.fit_transform(X)
         self.model.fit(X_scaled, y)
         self.is_trained = True
         
-        pass  # Model training complete
         return True
     
     def analyze_efficiency_patterns(self, facility_id: int = 1, batch_id: str = None) -> Dict:
-        """Analyze efficiency patterns using ML model"""
+        """Analyze efficiency patterns with breakdown"""
+        
         if not self.is_trained:
             self.train_model(facility_id, batch_id)
         
@@ -134,7 +124,6 @@ class EfficiencyAnalyzer:
         
         if batch_id:
             query = query.eq('uploaded_csv_batch', batch_id)
-            print(f"Filtering efficiency analysis to batch: {batch_id}")
             
         response = query.execute()
         
@@ -143,7 +132,6 @@ class EfficiencyAnalyzer:
         
         df = pd.DataFrame(response.data)
         
-        # Calculate overall efficiency
         overall_labor_efficiency = []
         for _, order in df.iterrows():
             if order['actual_labor_hours'] and order['actual_labor_hours'] > 0:
@@ -152,10 +140,9 @@ class EfficiencyAnalyzer:
         
         overall_efficiency = np.mean(overall_labor_efficiency) if overall_labor_efficiency else 0
         
-        # Analyze by operation type
         efficiency_insights = []
-        
         operation_performance = {}
+        
         for _, order in df.iterrows():
             parts = order['work_order_number'].split('-')
             op_type = parts[1] if len(parts) > 1 else 'UNKNOWN'
@@ -166,20 +153,19 @@ class EfficiencyAnalyzer:
                     'labor_variances': [],
                     'cost_variances': [],
                     'labor_efficiencies': [],
-                    'cost_efficiencies': []
+                    'cost_efficiencies': [],
+                    'quality_issues': 0
                 }
             
             op_data = operation_performance[op_type]
             op_data['total_orders'] += 1
             
-            # Calculate metrics
             labor_var = (order['actual_labor_hours'] or 0) - (order['planned_labor_hours'] or 0)
             cost_var = (order['actual_material_cost'] or 0) - (order['planned_material_cost'] or 0)
             
             op_data['labor_variances'].append(labor_var)
             op_data['cost_variances'].append(cost_var)
             
-            # Efficiency calculations
             if order['actual_labor_hours'] and order['actual_labor_hours'] > 0:
                 labor_eff = (order['planned_labor_hours'] or 0) / order['actual_labor_hours'] * 100
             else:
@@ -192,57 +178,37 @@ class EfficiencyAnalyzer:
                 
             op_data['labor_efficiencies'].append(min(150, max(0, labor_eff)))
             op_data['cost_efficiencies'].append(min(150, max(0, cost_eff)))
+            
+            if str(order.get('quality_issues', '')).lower() == 'true':
+                op_data['quality_issues'] += 1
         
-        # Generate insights for each operation
         for op_type, data in operation_performance.items():
             if data['total_orders'] < 2:
                 continue
             
-            avg_labor_var = np.mean(data['labor_variances'])
-            avg_cost_var = np.mean(data['cost_variances'])
-            avg_labor_eff = np.mean(data['labor_efficiencies'])
-            avg_cost_eff = np.mean(data['cost_efficiencies'])
-            consistency = np.std(data['labor_variances'])
-            
-            # Create features for ML prediction
-            features = np.array([[avg_labor_var, avg_cost_var, data['total_orders'], 
-                                avg_labor_eff, avg_cost_eff, consistency]])
-            
             try:
-                X_scaled = self.scaler.transform(features)
-                predicted_savings = self.model.predict(X_scaled)[0]
+                breakdown = self._calculate_efficiency_breakdown(data)
                 
-                # Only include operations with significant improvement opportunity
-                if predicted_savings > 1000 or avg_labor_eff < 85:
-                    improvement_factors = []
-                    if avg_labor_eff < 85:
-                        improvement_factors.append('labor_productivity_below_target')
-                    if avg_cost_eff < 90:
-                        improvement_factors.append('cost_overruns_frequent')
-                    if consistency > 3:
-                        improvement_factors.append('inconsistent_performance')
-                    if abs(avg_cost_var) > 500:
-                        improvement_factors.append('material_cost_volatility')
-                    
-                    efficiency_score = (avg_labor_eff + avg_cost_eff) / 2
-                    
+                avg_labor_eff = np.mean(data['labor_efficiencies'])
+                avg_cost_eff = np.mean(data['cost_efficiencies'])
+                efficiency_score = (avg_labor_eff + avg_cost_eff) / 2
+                
+                if breakdown['total_savings'] > 1000 or efficiency_score < 85:
                     efficiency_insights.append({
                         'operation_type': op_type,
                         'efficiency_score': round(efficiency_score, 1),
                         'labor_efficiency': round(avg_labor_eff, 1),
                         'cost_efficiency': round(avg_cost_eff, 1),
-                        'improvement_factors': improvement_factors,
                         'orders_analyzed': data['total_orders'],
-                        'potential_savings': round(predicted_savings, 0),
-                        'avg_labor_variance_hours': round(avg_labor_var, 1),
-                        'avg_cost_variance': round(avg_cost_var, 0)
+                        'potential_savings': breakdown['total_savings'],
+                        'analysis': breakdown
                     })
-            except:
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
                 continue
         
-        # Sort by potential savings
         efficiency_insights.sort(key=lambda x: x['potential_savings'], reverse=True)
-        
         total_savings = sum(insight['potential_savings'] for insight in efficiency_insights[:3])
         
         return {
@@ -250,3 +216,110 @@ class EfficiencyAnalyzer:
             "overall_efficiency": round(overall_efficiency, 1),
             "total_savings_opportunity": int(total_savings)
         }
+    
+    def _calculate_efficiency_breakdown(self, operation_data: dict) -> dict:
+        """Calculate detailed efficiency breakdown"""
+        
+        avg_labor_var = np.mean(operation_data['labor_variances'])
+        avg_cost_var = np.mean(operation_data['cost_variances'])
+        total_orders = operation_data['total_orders']
+        quality_issues = operation_data['quality_issues']
+        consistency = np.std(operation_data['labor_variances'])
+        
+        labor_impact = int(max(0, avg_labor_var) * 200 * total_orders)
+        material_impact = int(max(0, avg_cost_var) * total_orders)
+        quality_impact = int(quality_issues * 75 * 5)
+        
+        total_savings = labor_impact + material_impact + quality_impact
+        
+        if total_savings > 0:
+            labor_pct = (labor_impact / total_savings) * 100
+            material_pct = (material_impact / total_savings) * 100
+            quality_pct = (quality_impact / total_savings) * 100
+        else:
+            labor_pct = material_pct = quality_pct = 0
+        
+        impacts = {
+            'labor': labor_impact,
+            'material': material_impact,
+            'quality': quality_impact
+        }
+        primary_driver = max(impacts.items(), key=lambda x: x[1])[0]
+        
+        labor_driver = self._determine_labor_driver(avg_labor_var)
+        material_driver = self._determine_material_driver(avg_cost_var)
+        quality_driver = self._determine_quality_driver(quality_issues, total_orders)
+        consistency_driver = self._determine_consistency_driver(consistency)
+        
+        return {
+            'total_savings': total_savings,
+            'breakdown': {
+                'labor': {
+                    'impact': labor_impact,
+                    'percentage': round(labor_pct, 1),
+                    'avg_hours_over': round(avg_labor_var, 1),
+                    'driver': labor_driver
+                },
+                'material': {
+                    'impact': material_impact,
+                    'percentage': round(material_pct, 1),
+                    'avg_cost_over': round(avg_cost_var, 0),
+                    'driver': material_driver
+                },
+                'quality': {
+                    'impact': quality_impact,
+                    'percentage': round(quality_pct, 1),
+                    'issue_count': quality_issues,
+                    'driver': quality_driver
+                }
+            },
+            'primary_driver': primary_driver,
+            'consistency_score': round(consistency, 2),
+            'consistency_driver': consistency_driver
+        }
+    
+    def _determine_labor_driver(self, avg_variance: float) -> str:
+        """Determine labor inefficiency description"""
+        if avg_variance > 10:
+            return f"Severe labor overruns (avg +{avg_variance:.1f} hrs/order)"
+        elif avg_variance > 5:
+            return f"Moderate labor inefficiency (avg +{avg_variance:.1f} hrs/order)"
+        elif avg_variance > 2:
+            return f"Minor labor variance (avg +{avg_variance:.1f} hrs/order)"
+        else:
+            return "Labor efficiency acceptable"
+    
+    def _determine_material_driver(self, avg_variance: float) -> str:
+        """Determine material inefficiency description"""
+        if avg_variance > 1000:
+            return f"Significant material cost overruns (avg +${avg_variance:.0f}/order)"
+        elif avg_variance > 500:
+            return f"Moderate material cost variance (avg +${avg_variance:.0f}/order)"
+        elif avg_variance > 100:
+            return f"Minor material cost fluctuation (avg +${avg_variance:.0f}/order)"
+        else:
+            return "Material costs well-controlled"
+    
+    def _determine_quality_driver(self, issue_count: int, total_orders: int) -> str:
+        """Determine quality impact on efficiency"""
+        issue_rate = (issue_count / total_orders) * 100 if total_orders > 0 else 0
+        
+        if issue_rate > 30:
+            return f"Critical quality impact ({issue_rate:.0f}% orders affected)"
+        elif issue_rate > 15:
+            return f"Moderate quality impact ({issue_rate:.0f}% orders affected)"
+        elif issue_rate > 5:
+            return f"Minor quality impact ({issue_rate:.0f}% orders affected)"
+        else:
+            return "Quality not impacting efficiency"
+    
+    def _determine_consistency_driver(self, std_dev: float) -> str:
+        """Determine process consistency"""
+        if std_dev > 5:
+            return f"Highly inconsistent performance (std dev={std_dev:.1f})"
+        elif std_dev > 3:
+            return f"Moderate variability (std dev={std_dev:.1f})"
+        elif std_dev > 1:
+            return f"Good consistency (std dev={std_dev:.1f})"
+        else:
+            return "Excellent process consistency"

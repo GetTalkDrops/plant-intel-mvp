@@ -1,5 +1,10 @@
 import { enhanceMLResponse } from "./aiService";
-import { formatCostAnalysisResponse } from "./format-ml-response";
+import {
+  formatCostAnalysisResponse,
+  formatEquipmentResponse,
+  formatQualityResponse,
+  formatEfficiencyResponse,
+} from "./format-ml-response";
 import { InsightCard } from "./insight-types";
 
 export type ChatMessage = {
@@ -25,27 +30,112 @@ export type AIUsageStats = {
 };
 
 interface MLChatResponse {
-  type: string;
+  type?: string;
   message?: string;
-  insights: {
-    equipment?: string[];
-    cost_variance?: number;
-    quality_issues?: string[];
-  };
+  insights?: unknown[];
+  predictions?: unknown[];
   total_impact?: number;
-  predictions?: Array<{
+  total_downtime_cost?: number;
+  total_scrap_cost?: number;
+  total_savings_opportunity?: number;
+  overall_efficiency?: number;
+  overall_scrap_rate?: number;
+  error?: string;
+  validation?: unknown;
+  thresholds?: unknown;
+  status?: string;
+  required_fields?: string[];
+}
+
+function isCostResponse(
+  response: MLChatResponse
+): response is MLChatResponse & {
+  predictions: Array<{
     work_order_number: string;
     predicted_variance: number;
     confidence: number;
     risk_level: string;
+    analysis?: unknown;
   }>;
-  error?: string;
+} {
+  return (
+    Array.isArray(response.predictions) &&
+    response.predictions.length > 0 &&
+    typeof response.predictions[0] === "object" &&
+    response.predictions[0] !== null &&
+    "work_order_number" in response.predictions[0]
+  );
+}
+
+function isEquipmentResponse(
+  response: MLChatResponse
+): response is MLChatResponse & {
+  insights: Array<{
+    equipment_id: string;
+    failure_probability: number;
+    estimated_downtime_cost: number;
+    orders_analyzed: number;
+    analysis: unknown;
+  }>;
+} {
+  return (
+    response.type === "equipment_analysis" &&
+    Array.isArray(response.insights) &&
+    response.insights.length > 0 &&
+    typeof response.insights[0] === "object" &&
+    response.insights[0] !== null &&
+    "equipment_id" in response.insights[0]
+  );
+}
+
+function isQualityResponse(
+  response: MLChatResponse
+): response is MLChatResponse & {
+  insights: Array<{
+    material_code: string;
+    scrap_rate_per_order: number;
+    quality_issue_rate: number;
+    estimated_cost_impact: number;
+    orders_analyzed: number;
+    analysis: unknown;
+  }>;
+} {
+  return (
+    response.type === "quality_analysis" &&
+    Array.isArray(response.insights) &&
+    response.insights.length > 0 &&
+    typeof response.insights[0] === "object" &&
+    response.insights[0] !== null &&
+    "material_code" in response.insights[0]
+  );
+}
+
+function isEfficiencyResponse(
+  response: MLChatResponse
+): response is MLChatResponse & {
+  insights: Array<{
+    operation_type: string;
+    efficiency_score: number;
+    labor_efficiency: number;
+    cost_efficiency: number;
+    orders_analyzed: number;
+    potential_savings: number;
+    analysis: unknown;
+  }>;
+} {
+  return (
+    response.type === "efficiency_analysis" &&
+    Array.isArray(response.insights) &&
+    response.insights.length > 0 &&
+    typeof response.insights[0] === "object" &&
+    response.insights[0] !== null &&
+    "operation_type" in response.insights[0]
+  );
 }
 
 async function callMLChatService(
   query: string,
-  userEmail: string,
-  facilityId: number = 1
+  userEmail: string
 ): Promise<MLChatResponse> {
   const response = await fetch("/api/chat", {
     method: "POST",
@@ -62,14 +152,7 @@ async function callMLChatService(
 
   const data = await response.json();
 
-  return {
-    type: data.type || "chat_response",
-    message: data.response || data.message,
-    insights: data.insights || {},
-    total_impact: data.totalImpact || data.total_impact || 0,
-    predictions: data.predictions,
-    error: data.error,
-  };
+  return data;
 }
 
 function shouldUseAI(query: string, mlResponse: string): boolean {
@@ -98,36 +181,39 @@ export async function processManufacturingQuery(
   useAI: boolean = true
 ): Promise<ManufacturingInsight> {
   const email = userEmail || "skinner.chris@gmail.com";
+  const queryLower = query.toLowerCase();
 
   try {
-    const mlResponse = await callMLChatService(query, email, 1);
+    const mlResponse = await callMLChatService(query, email);
 
+    // Detect query type
     const isCostQuery =
-      query.toLowerCase().includes("cost") ||
-      query.toLowerCase().includes("variance") ||
-      query.toLowerCase().includes("budget");
+      queryLower.includes("cost") ||
+      queryLower.includes("variance") ||
+      queryLower.includes("budget");
 
-    if (
-      isCostQuery &&
-      mlResponse.predictions &&
-      mlResponse.predictions.length > 0
-    ) {
-      console.log("Cost query detected, predictions:", mlResponse.predictions);
+    const isEquipmentQuery =
+      queryLower.includes("equipment") ||
+      queryLower.includes("machine") ||
+      queryLower.includes("asset") ||
+      queryLower.includes("maintenance");
 
-      const formatted = formatCostAnalysisResponse({
-        predictions: mlResponse.predictions as Array<{
-          work_order_number: string;
-          predicted_variance: number;
-          confidence: number;
-          risk_level: "high" | "medium" | "low";
-        }>,
-        total_impact: mlResponse.total_impact,
-        error: mlResponse.error,
-        message: mlResponse.message,
-      });
+    const isQualityQuery =
+      queryLower.includes("quality") ||
+      queryLower.includes("scrap") ||
+      queryLower.includes("defect") ||
+      queryLower.includes("rework");
 
-      console.log("Formatted response:", formatted);
+    const isEfficiencyQuery =
+      queryLower.includes("efficiency") ||
+      queryLower.includes("productivity") ||
+      queryLower.includes("optimization") ||
+      queryLower.includes("performance");
 
+    // Cost query
+    if (isCostQuery && isCostResponse(mlResponse)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const formatted = formatCostAnalysisResponse(mlResponse as any);
       return {
         response: formatted.text,
         cards: formatted.cards,
@@ -136,6 +222,44 @@ export async function processManufacturingQuery(
       };
     }
 
+    // Equipment query
+    if (isEquipmentQuery && isEquipmentResponse(mlResponse)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const formatted = formatEquipmentResponse(mlResponse as any);
+      return {
+        response: formatted.text,
+        cards: formatted.cards,
+        followUps: formatted.followUps,
+        costImpact: mlResponse.total_impact || 0,
+      };
+    }
+
+    // Quality query
+    if (isQualityQuery && isQualityResponse(mlResponse)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const formatted = formatQualityResponse(mlResponse as any);
+      return {
+        response: formatted.text,
+        cards: formatted.cards,
+        followUps: formatted.followUps,
+        costImpact: mlResponse.total_scrap_cost || mlResponse.total_impact || 0,
+      };
+    }
+
+    // Efficiency query
+    if (isEfficiencyQuery && isEfficiencyResponse(mlResponse)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const formatted = formatEfficiencyResponse(mlResponse as any);
+      return {
+        response: formatted.text,
+        cards: formatted.cards,
+        followUps: formatted.followUps,
+        costImpact:
+          mlResponse.total_savings_opportunity || mlResponse.total_impact || 0,
+      };
+    }
+
+    // Fallback to text response with optional AI enhancement
     let finalResponse = mlResponse.message || "Analysis complete";
 
     if (useAI && shouldUseAI(query, finalResponse)) {

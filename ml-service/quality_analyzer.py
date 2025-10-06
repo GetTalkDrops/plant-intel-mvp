@@ -29,8 +29,7 @@ class QualityAnalyzer:
         
         if batch_id:
             query = query.eq('uploaded_csv_batch', batch_id)
-            print(f"Filtering quality analysis to batch: {batch_id}")
-            
+        
         response = query.execute()
         
         if not response.data:
@@ -42,37 +41,39 @@ class QualityAnalyzer:
         
         df = pd.DataFrame(response.data)
         
-        # Overall metrics
-        total_scrap = df['units_scrapped'].fillna(0).sum()
+        total_scrap = int(df['units_scrapped'].fillna(0).sum())
         total_orders = len(df)
         overall_scrap_rate = total_scrap / total_orders if total_orders > 0 else 0
         
         quality_issues = []
         
-        # Analyze by material
         if 'material_code' in df.columns:
-            for material_code in df['material_code'].dropna().unique():
+            unique_materials = df['material_code'].dropna().unique()
+            
+            for material_code in unique_materials:
                 material_data = df[df['material_code'] == material_code]
                 
                 if len(material_data) < 2:
                     continue
                 
-                breakdown = self._calculate_quality_breakdown(material_data)
-                
-                # Only include materials with significant issues
-                if breakdown['total_impact'] > 500 or breakdown['issue_rate'] > 15:
-                    quality_issues.append({
-                        'material_code': material_code,
-                        'scrap_rate_per_order': breakdown['scrap_per_order'],
-                        'quality_issue_rate': breakdown['issue_rate'],
-                        'estimated_cost_impact': breakdown['total_impact'],
-                        'orders_analyzed': len(material_data),
-                        'analysis': breakdown
-                    })
+                try:
+                    breakdown = self._calculate_quality_breakdown(material_data)
+                    
+                    if breakdown['total_impact'] > 500 or breakdown['issue_rate'] > 10:
+                        quality_issues.append({
+                            'material_code': material_code,
+                            'scrap_rate_per_order': breakdown['scrap_per_order'],
+                            'quality_issue_rate': breakdown['issue_rate'],
+                            'estimated_cost_impact': breakdown['total_impact'],
+                            'orders_analyzed': len(material_data),
+                            'analysis': breakdown
+                        })
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    continue
         
-        # Sort by cost impact
         quality_issues.sort(key=lambda x: x['estimated_cost_impact'], reverse=True)
-        
         total_scrap_cost = sum(q['estimated_cost_impact'] for q in quality_issues)
         
         return {
@@ -84,20 +85,17 @@ class QualityAnalyzer:
     def _calculate_quality_breakdown(self, material_data: pd.DataFrame) -> dict:
         """Calculate detailed quality issue breakdown"""
         
-        total_scrap = material_data['units_scrapped'].fillna(0).sum()
+        total_scrap = int(material_data['units_scrapped'].fillna(0).sum())
         scrap_per_order = total_scrap / len(material_data)
         
-        # Quality issue frequency
-        quality_issue_orders = material_data['quality_issues'].fillna(False).sum()
+        quality_issue_orders = (material_data['quality_issues'].astype(str).str.lower() == 'true').sum()
         issue_rate = (quality_issue_orders / len(material_data)) * 100
         
-        # Cost impacts
-        scrap_cost = int(total_scrap * 75)  # $75 per scrapped unit
+        scrap_cost = int(total_scrap * 75)
         
-        # Labor impact from rework
         rework_labor = 0
         for _, row in material_data.iterrows():
-            if row.get('quality_issues'):
+            if str(row.get('quality_issues', '')).lower() == 'true':
                 planned = row.get('planned_labor_hours', 0) or 0
                 actual = row.get('actual_labor_hours', 0) or 0
                 if actual > planned:
@@ -105,10 +103,9 @@ class QualityAnalyzer:
         
         rework_cost = int(rework_labor * 200)
         
-        # Material waste
         material_waste_cost = 0
         for _, row in material_data.iterrows():
-            if row.get('quality_issues'):
+            if str(row.get('quality_issues', '')).lower() == 'true':
                 planned_mat = row.get('planned_material_cost', 0) or 0
                 actual_mat = row.get('actual_material_cost', 0) or 0
                 if actual_mat > planned_mat:
@@ -118,7 +115,6 @@ class QualityAnalyzer:
         
         total_impact = scrap_cost + rework_cost + material_waste_cost
         
-        # Calculate percentages
         if total_impact > 0:
             scrap_pct = (scrap_cost / total_impact) * 100
             rework_pct = (rework_cost / total_impact) * 100
@@ -126,7 +122,6 @@ class QualityAnalyzer:
         else:
             scrap_pct = rework_pct = waste_pct = 0
         
-        # Primary driver
         impacts = {
             'scrap': scrap_cost,
             'rework': rework_cost,
@@ -134,7 +129,6 @@ class QualityAnalyzer:
         }
         primary_driver = max(impacts.items(), key=lambda x: x[1])[0]
         
-        # Driver descriptions
         scrap_driver = self._determine_scrap_driver(scrap_per_order)
         rework_driver = self._determine_rework_driver(rework_labor, len(material_data))
         

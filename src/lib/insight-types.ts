@@ -21,26 +21,93 @@ export interface InsightItem {
   id: string;
   amount: number;
   confidence: number;
-  breakdown?: {
-    material: {
-      planned: number;
-      actual: number;
-      variance: number;
-      percentage: number;
-      variance_pct: number;
-      driver: string;
-    };
-    labor: {
-      planned: number;
-      actual: number;
-      variance: number;
-      percentage: number;
-      variance_pct: number;
-      hours_variance: number;
-      driver: string;
-    };
-    primary_driver: "material" | "labor";
-  };
+  breakdown?:
+    | {
+        // Cost breakdown
+        material: {
+          planned: number;
+          actual: number;
+          variance: number;
+          percentage: number;
+          variance_pct: number;
+          driver: string;
+        };
+        labor: {
+          planned: number;
+          actual: number;
+          variance: number;
+          percentage: number;
+          variance_pct: number;
+          hours_variance: number;
+          driver: string;
+        };
+        primary_driver: "material" | "labor";
+      }
+    | {
+        // Equipment breakdown
+        labor: {
+          impact: number;
+          percentage: number;
+          avg_hours_over: number;
+          driver: string;
+        };
+        quality: {
+          impact: number;
+          percentage: number;
+          scrap_units: number;
+          affected_orders: number;
+          driver: string;
+        };
+        material_waste: {
+          impact: number;
+          percentage: number;
+          driver: string;
+        };
+        primary_issue: string;
+      }
+    | {
+        // Quality breakdown
+        scrap: {
+          cost: number;
+          percentage: number;
+          units: number;
+          driver: string;
+        };
+        rework: {
+          cost: number;
+          percentage: number;
+          hours: number;
+          driver: string;
+        };
+        material_waste: {
+          cost: number;
+          percentage: number;
+          driver: string;
+        };
+        primary_driver: string;
+      }
+    | {
+        // Efficiency breakdown
+        labor: {
+          impact: number;
+          percentage: number;
+          avg_hours_over: number;
+          driver: string;
+        };
+        material: {
+          impact: number;
+          percentage: number;
+          avg_cost_over: number;
+          driver: string;
+        };
+        quality: {
+          impact: number;
+          percentage: number;
+          issue_count: number;
+          driver: string;
+        };
+        primary_driver: string;
+      };
 }
 
 export interface AssistantMessage {

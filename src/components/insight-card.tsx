@@ -1,6 +1,9 @@
 // src/components/insight-card.tsx
 import { useState } from "react";
-import { InsightCard as InsightCardType } from "@/lib/insight-types";
+import {
+  InsightCard as InsightCardType,
+  InsightItem,
+} from "@/lib/insight-types";
 import { getInsightIcon } from "@/lib/insight-icons";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
@@ -31,6 +34,267 @@ export function InsightCard({ card }: InsightCardProps) {
     setExpandedSections(newExpanded);
   };
 
+  const renderBreakdown = (
+    breakdown: NonNullable<InsightItem["breakdown"]>
+  ): React.ReactElement | null => {
+    // Cost breakdown
+    if (
+      "material" in breakdown &&
+      "labor" in breakdown &&
+      "primary_driver" in breakdown &&
+      !("primary_issue" in breakdown)
+    ) {
+      const bd = breakdown as {
+        material?: { variance?: number; percentage?: number; driver?: string };
+        labor?: { variance?: number; percentage?: number; driver?: string };
+        primary_driver?: string;
+      };
+
+      if (!bd.material?.variance && !bd.labor?.variance) {
+        return (
+          <div className="mt-2 text-sm text-gray-500">
+            No variance data available
+          </div>
+        );
+      }
+
+      return (
+        <div className="mt-2 space-y-1 text-sm">
+          {bd.material?.variance !== undefined && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">
+                Materials: {bd.material.driver || "Material variance"}
+              </span>
+              <span
+                className={`font-medium ${
+                  bd.material.variance >= 0 ? "text-red-600" : "text-green-600"
+                }`}
+              >
+                {bd.material.variance >= 0 ? "+" : ""}$
+                {Number(bd.material.variance).toLocaleString()}
+                {bd.material.percentage !== undefined && (
+                  <span className="text-gray-500 ml-1">
+                    ({bd.material.percentage}%)
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+          {bd.labor?.variance !== undefined && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">
+                Labor: {bd.labor.driver || "Labor variance"}
+              </span>
+              <span
+                className={`font-medium ${
+                  bd.labor.variance >= 0 ? "text-red-600" : "text-green-600"
+                }`}
+              >
+                {bd.labor.variance >= 0 ? "+" : ""}$
+                {Number(bd.labor.variance).toLocaleString()}
+                {bd.labor.percentage !== undefined && (
+                  <span className="text-gray-500 ml-1">
+                    ({bd.labor.percentage}%)
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+          {bd.primary_driver && (
+            <div className="mt-1 pt-1 border-t border-gray-100">
+              <span className="text-xs font-medium text-gray-700">
+                Primary driver: {bd.primary_driver}
+              </span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Equipment breakdown
+    if ("primary_issue" in breakdown) {
+      const bd = breakdown as {
+        labor: { impact: number; percentage: number; driver: string };
+        quality: { impact: number; percentage: number; driver: string };
+        material_waste: { impact: number; percentage: number; driver: string };
+        primary_issue: string;
+      };
+      return (
+        <div className="mt-2 space-y-1 text-sm">
+          {bd.labor.impact > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Labor: {bd.labor.driver}</span>
+              <span className="font-medium text-red-600">
+                ${bd.labor.impact.toLocaleString()}
+                <span className="text-gray-500 ml-1">
+                  ({bd.labor.percentage.toFixed(1)}%)
+                </span>
+              </span>
+            </div>
+          )}
+          {bd.quality.impact > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">
+                Quality: {bd.quality.driver}
+              </span>
+              <span className="font-medium text-red-600">
+                ${bd.quality.impact.toLocaleString()}
+                <span className="text-gray-500 ml-1">
+                  ({bd.quality.percentage.toFixed(1)}%)
+                </span>
+              </span>
+            </div>
+          )}
+          {bd.material_waste.impact > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">
+                Material Waste: {bd.material_waste.driver}
+              </span>
+              <span className="font-medium text-red-600">
+                ${bd.material_waste.impact.toLocaleString()}
+                <span className="text-gray-500 ml-1">
+                  ({bd.material_waste.percentage.toFixed(1)}%)
+                </span>
+              </span>
+            </div>
+          )}
+          <div className="mt-1 pt-1 border-t border-gray-100">
+            <span className="text-xs font-medium text-gray-700">
+              Primary issue: {bd.primary_issue.replace("_", " ")}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    // Quality breakdown
+    if ("scrap" in breakdown && "rework" in breakdown) {
+      const bd = breakdown as {
+        scrap?: { cost: number; percentage: number; driver: string };
+        rework?: { cost: number; percentage: number; driver: string };
+        material_waste?: { cost: number; percentage: number; driver: string };
+        primary_driver: string;
+      };
+      return (
+        <div className="mt-2 space-y-1 text-sm">
+          {bd.scrap && bd.scrap.cost > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Scrap: {bd.scrap.driver}</span>
+              <span className="font-medium text-red-600">
+                ${bd.scrap.cost.toLocaleString()}
+                <span className="text-gray-500 ml-1">
+                  ({bd.scrap.percentage.toFixed(1)}%)
+                </span>
+              </span>
+            </div>
+          )}
+          {bd.rework && bd.rework.cost > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Rework: {bd.rework.driver}</span>
+              <span className="font-medium text-red-600">
+                ${bd.rework.cost.toLocaleString()}
+                <span className="text-gray-500 ml-1">
+                  ({bd.rework.percentage.toFixed(1)}%)
+                </span>
+              </span>
+            </div>
+          )}
+          {bd.material_waste && bd.material_waste.cost > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">
+                Material Waste: {bd.material_waste.driver}
+              </span>
+              <span className="font-medium text-red-600">
+                ${bd.material_waste.cost.toLocaleString()}
+                <span className="text-gray-500 ml-1">
+                  ({bd.material_waste.percentage.toFixed(1)}%)
+                </span>
+              </span>
+            </div>
+          )}
+          <div className="mt-1 pt-1 border-t border-gray-100">
+            <span className="text-xs font-medium text-gray-700">
+              Primary driver: {bd.primary_driver}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    // Efficiency breakdown (default)
+    const bd = breakdown as {
+      labor?: { impact?: number; percentage?: number; driver?: string };
+      material?: { impact?: number; percentage?: number; driver?: string };
+      quality?: { impact?: number; percentage?: number; driver?: string };
+      primary_driver?: string;
+    };
+
+    if (!bd || typeof bd !== "object") {
+      return (
+        <div className="mt-2 text-sm text-gray-500">
+          No breakdown data available
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-2 space-y-1 text-sm">
+        {bd.labor?.impact && (
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">
+              Labor: {bd.labor?.driver || "Impact detected"}
+            </span>
+            <span className="font-medium text-amber-600">
+              ${Number(bd.labor.impact).toLocaleString()}
+              {bd.labor?.percentage && (
+                <span className="text-gray-500 ml-1">
+                  ({Number(bd.labor.percentage).toFixed(1)}%)
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+        {bd.material?.impact && (
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">
+              Material: {bd.material?.driver || "Impact detected"}
+            </span>
+            <span className="font-medium text-amber-600">
+              ${Number(bd.material.impact).toLocaleString()}
+              {bd.material?.percentage && (
+                <span className="text-gray-500 ml-1">
+                  ({Number(bd.material.percentage).toFixed(1)}%)
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+        {bd.quality?.impact && (
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">
+              Quality: {bd.quality?.driver || "Impact detected"}
+            </span>
+            <span className="font-medium text-amber-600">
+              ${Number(bd.quality.impact).toLocaleString()}
+              {bd.quality?.percentage && (
+                <span className="text-gray-500 ml-1">
+                  ({Number(bd.quality.percentage).toFixed(1)}%)
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+        {bd.primary_driver && (
+          <div className="mt-1 pt-1 border-t border-gray-100">
+            <span className="text-xs font-medium text-gray-700">
+              Primary driver: {bd.primary_driver}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className={`rounded-lg border-2 p-4 my-3 ${cardBg}`}>
       {/* Header */}
@@ -47,7 +311,7 @@ export function InsightCard({ card }: InsightCardProps) {
       </div>
 
       {/* Impact */}
-      {card.impact && (
+      {card.impact !== undefined && card.impact > 0 && (
         <div className="text-lg font-bold text-gray-900 mb-3">
           ${card.impact.toLocaleString()} total impact
         </div>
@@ -85,66 +349,26 @@ export function InsightCard({ card }: InsightCardProps) {
                       key={itemIdx}
                       className="py-2 border-b border-gray-200 last:border-0"
                     >
-                      {/* Work Order ID and Amount */}
+                      {/* Item ID and Amount */}
                       <div className="flex justify-between items-center mb-1">
                         <span className="font-medium text-gray-900">
                           {item.id}
                         </span>
                         <span className="text-gray-700 font-semibold">
-                          ${item.amount.toLocaleString()} ({item.confidence}%
-                          confidence)
+                          ${item.amount.toLocaleString()} ({item.confidence}
+                          {card.category === "cost"
+                            ? "% confidence"
+                            : card.category === "equipment"
+                            ? "% risk"
+                            : card.category === "quality"
+                            ? "% issue rate"
+                            : "% efficiency"}
+                          )
                         </span>
                       </div>
 
-                      {/* NEW: Variance Breakdown */}
-                      {item.breakdown && (
-                        <div className="mt-2 space-y-1 text-sm">
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-600">
-                              Materials: {item.breakdown.material.driver}
-                            </span>
-                            <span
-                              className={`font-medium ${
-                                item.breakdown.material.variance >= 0
-                                  ? "text-red-600"
-                                  : "text-green-600"
-                              }`}
-                            >
-                              {item.breakdown.material.variance >= 0 ? "+" : ""}
-                              $
-                              {item.breakdown.material.variance.toLocaleString()}
-                              <span className="text-gray-500 ml-1">
-                                ({item.breakdown.material.percentage}%)
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-600">
-                              Labor: {item.breakdown.labor.driver}
-                            </span>
-                            <span
-                              className={`font-medium ${
-                                item.breakdown.labor.variance >= 0
-                                  ? "text-red-600"
-                                  : "text-green-600"
-                              }`}
-                            >
-                              {item.breakdown.labor.variance >= 0 ? "+" : ""}$
-                              {item.breakdown.labor.variance.toLocaleString()}
-                              <span className="text-gray-500 ml-1">
-                                ({item.breakdown.labor.percentage}%)
-                              </span>
-                            </span>
-                          </div>
-                          {item.breakdown.primary_driver && (
-                            <div className="mt-1 pt-1 border-t border-gray-100">
-                              <span className="text-xs font-medium text-gray-700">
-                                Primary driver: {item.breakdown.primary_driver}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {/* Breakdown - dynamically rendered based on type */}
+                      {item.breakdown && renderBreakdown(item.breakdown)}
                     </div>
                   ))}
 

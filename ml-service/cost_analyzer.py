@@ -40,7 +40,6 @@ class CostAnalyzer:
             if field not in df.columns:
                 missing_fields.append(display_name)
             else:
-                # Check if field has meaningful data (not all null/zero)
                 non_null = df[field].notna().sum()
                 non_zero = (df[field] != 0).sum() if non_null > 0 else 0
                 
@@ -60,15 +59,12 @@ class CostAnalyzer:
         features = []
         
         for _, row in df.iterrows():
-            # Basic features
             planned_material = row['planned_material_cost'] or 0
             planned_labor = row['planned_labor_hours'] or 0
             
-            # Feature engineering
             total_planned = planned_material + (planned_labor * 25)
             complexity = planned_labor / max(planned_material, 1) * 100
             
-            # Material risk (extract from material code)
             material_risk = 0.5
             if row['material_code']:
                 try:
@@ -89,7 +85,6 @@ class CostAnalyzer:
     
     def train_model(self, facility_id: int = 1, batch_id: str = None):
         """Train the cost prediction model"""
-        # Get training data
         query = self.supabase.table('work_orders')\
             .select('*')\
             .eq('facility_id', facility_id)\
@@ -105,15 +100,12 @@ class CostAnalyzer:
         
         df = pd.DataFrame(response.data)
         
-        # Validate data before training
         validation = self._validate_cost_data(df)
         if not validation['has_data']:
             return False
         
-        # Create features
         X = self._create_features(df)
         
-        # Create targets (actual cost variance)
         y = []
         for _, row in df.iterrows():
             actual_material = row['actual_material_cost'] or 0
@@ -129,30 +121,24 @@ class CostAnalyzer:
         
         y = np.array(y)
         
-        # Train model
         X_scaled = self.scaler.fit_transform(X)
         self.model.fit(X_scaled, y)
         self.is_trained = True
         
-        print(f"Model trained on {len(df)} work orders")
         return True
     
     def predict_cost_variance(self, facility_id: int = 1, batch_id: str = None) -> Dict:
         """Predict cost variances with data quality validation"""
         
-        # Fetch facility settings
         facility_settings = self._get_facility_settings(facility_id)
         
-        # Get data to analyze
         query = self.supabase.table('work_orders')\
             .select('*')\
             .eq('facility_id', facility_id)\
             .eq('demo_mode', True)
         
-        # Filter by batch if provided
         if batch_id:
             query = query.eq('uploaded_csv_batch', batch_id)
-            print(f"Filtering cost analysis to batch: {batch_id}")
         
         response = query.execute()
         
@@ -166,7 +152,6 @@ class CostAnalyzer:
             
         df = pd.DataFrame(response.data)
         
-        # CRITICAL: Validate cost data exists
         validation = self._validate_cost_data(df)
         
         if not validation['has_data']:
@@ -184,10 +169,8 @@ class CostAnalyzer:
                 ]
             }
         
-        # NEW: Validate data quality
         quality_validation = self._validate_data_quality(df)
         
-        # If data too poor, return early
         if quality_validation['score'] < 40:
             return {
                 'status': 'insufficient_data',
@@ -196,10 +179,8 @@ class CostAnalyzer:
                 'total_impact': 0
             }
         
-        # NEW: Calculate adaptive thresholds
         thresholds = self._calculate_thresholds(df, facility_settings)
         
-        # Train model if not trained
         if not self.is_trained:
             trained = self.train_model(facility_id, batch_id)
             if not trained:
@@ -210,21 +191,17 @@ class CostAnalyzer:
                     "message": "Unable to train cost prediction model. Insufficient historical data."
                 }
         
-        # Create features and predict
         X = self._create_features(df)
         X_scaled = self.scaler.transform(X)
         predictions = self.model.predict(X_scaled)
         
-       # Generate insights with breakdown
         results = []
         for i, (_, row) in enumerate(df.iterrows()):
             predicted_variance = predictions[i]
             
-            # Use adaptive threshold instead of hardcoded 1000
             if abs(predicted_variance) > thresholds['variance_threshold']:
                 confidence = min(95, 60 + abs(predicted_variance) / 500)
                 
-                # NEW: Calculate variance breakdown
                 breakdown = self._calculate_variance_breakdown(row, facility_settings['labor_rate'])
                 
                 results.append({
@@ -234,10 +211,9 @@ class CostAnalyzer:
                     'risk_level': 'critical' if abs(predicted_variance) > thresholds['variance_threshold'] * 5 
                                  else 'high' if abs(predicted_variance) > thresholds['variance_threshold'] * 2 
                                  else 'medium',
-                    'analysis': breakdown  # NEW: Add breakdown to results
+                    'analysis': breakdown
                 })
         
-        # Sort by absolute variance
         results.sort(key=lambda x: abs(x['predicted_variance']), reverse=True)
         
         total_impact = sum(abs(r['predicted_variance']) for r in results[:5])
@@ -249,8 +225,6 @@ class CostAnalyzer:
             'predictions': results[:20],
             'total_impact': total_impact
         }
-    
-    # NEW METHODS BELOW
     
     def _get_facility_settings(self, facility_id: int) -> dict:
         """Fetch facility-specific settings"""
@@ -265,10 +239,9 @@ class CostAnalyzer:
                     'labor_rate': float(response.data[0]['default_labor_rate']),
                     'variance_threshold_pct': float(response.data[0]['variance_threshold_pct'])
                 }
-        except Exception as e:
-            print(f"Error fetching facility settings: {e}")
+        except Exception:
+            pass
         
-        # Default fallback
         return {'labor_rate': 200.00, 'variance_threshold_pct': 5.00}
     
     def _validate_data_quality(self, df: pd.DataFrame) -> dict:
@@ -278,7 +251,6 @@ class CostAnalyzer:
         warnings = []
         field_quality = {}
         
-        # Check critical fields
         critical_fields = ['planned_material_cost', 'actual_material_cost', 
                            'planned_labor_hours', 'actual_labor_hours']
         
@@ -298,12 +270,10 @@ class CostAnalyzer:
                     score -= 5
                     warnings.append(f"{field}: {null_pct:.0f}% missing - may affect accuracy")
                 
-                # Check for negative costs
                 if field.endswith('_cost') and (df[field] < 0).any():
                     score -= 10
                     warnings.append(f"{field}: negative values detected")
         
-        # Check enhanced fields (don't penalize, just note limitations)
         limitations = []
         if 'material_code' not in df.columns or df['material_code'].isna().sum() > len(df) * 0.7:
             limitations.append("Limited pattern detection (material_code sparse)")
@@ -325,14 +295,12 @@ class CostAnalyzer:
     def _calculate_thresholds(self, df: pd.DataFrame, facility_settings: dict) -> dict:
         """Calculate adaptive thresholds based on data characteristics"""
         
-        # Calculate average work order value
         labor_rate = facility_settings['labor_rate']
         df['planned_total'] = (df['planned_material_cost'].fillna(0) + 
                                df['planned_labor_hours'].fillna(0) * labor_rate)
         
         avg_order_value = df['planned_total'].mean()
         
-        # Variance threshold: percentage of typical order OR minimum $500
         variance_threshold_pct = facility_settings['variance_threshold_pct']
         calculated_threshold = max(500, avg_order_value * (variance_threshold_pct / 100))
         
@@ -342,6 +310,7 @@ class CostAnalyzer:
             'avg_order_value': avg_order_value,
             'sample_size': len(df)
         }
+    
     def _calculate_variance_breakdown(self, row, labor_rate: float) -> dict:
         """Calculate detailed material vs labor breakdown"""
         
@@ -357,7 +326,6 @@ class CostAnalyzer:
         labor_variance = actual_labor_cost - planned_labor_cost
         total_variance = material_variance + labor_variance
         
-        # Calculate percentages
         if total_variance == 0:
             material_pct = 50
             labor_pct = 50
@@ -417,7 +385,6 @@ class CostAnalyzer:
         
         hours_variance_pct = ((actual_hrs - planned_hrs) / planned_hrs * 100)
         
-        # Check for quality issues indicator
         has_quality_issues = row.get('quality_issues') or row.get('units_scrapped', 0) > 0
         
         if abs(hours_variance_pct) < 10:

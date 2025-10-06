@@ -20,28 +20,51 @@ class EnhancedQueryRouter:
     def route_query(self, query: str, facility_id: int = 1, batch_id: str = None) -> Dict:
         """Enhanced routing with batch filtering"""
         
-        # Preprocess query for typos and variations
+        # Preprocess query
         corrected_query, was_corrected = self.preprocessor.suggest_correction(query)
         categories = self.preprocessor.fuzzy_category_match(query)
+        query_lower = corrected_query.lower()
         
-        # Use the corrected query for routing
-        query_lower = corrected_query
-        
-        # Priority 1: Specific equipment/material follow-ups
+        # Priority 1: Specific material follow-ups (MAT-1900, etc)
         if any(mat in query_lower for mat in ['mat-1900', 'mat-1800', 'mat-1600']):
             follow_up = self.templates.get_follow_up_response(query, {})
             if follow_up:
                 return self._add_correction_note(follow_up, query, corrected_query, was_corrected)
         
-        # Priority 2: Data limitation cases
-        # data_response = self.data_responder.get_data_aware_response(corrected_query, facility_id)
-        #if data_response:
-        #    return self._add_correction_note(data_response, query, corrected_query, was_corrected)
+        # Priority 2: Direct keyword matching
+        equipment_keywords = ['equipment', 'machine', 'maintenance', 'failure', 'asset']
+        quality_keywords = ['quality', 'scrap', 'defect', 'rework']
+        cost_keywords = ['cost', 'variance', 'budget', 'overrun', 'spending']
+        efficiency_keywords = ['efficiency', 'productivity', 'optimization', 'performance']
         
-        # Priority 3: Category-based routing using fuzzy matching
+        if any(keyword in query_lower for keyword in equipment_keywords):
+            return self._add_correction_note(
+                self._format_equipment_response(facility_id, query, batch_id),
+                query, corrected_query, was_corrected
+            )
+        
+        if any(keyword in query_lower for keyword in quality_keywords):
+            return self._add_correction_note(
+                self._format_quality_response(facility_id, query, batch_id),
+                query, corrected_query, was_corrected
+            )
+        
+        if any(keyword in query_lower for keyword in cost_keywords):
+            return self._add_correction_note(
+                self._format_cost_response(facility_id, query, batch_id),
+                query, corrected_query, was_corrected
+            )
+        
+        if any(keyword in query_lower for keyword in efficiency_keywords):
+            return self._add_correction_note(
+                self._format_efficiency_response(facility_id, query, batch_id),
+                query, corrected_query, was_corrected
+            )
+        
+        # Priority 3: Fuzzy category matching (fallback)
         if 'cost' in categories:
             return self._add_correction_note(
-                self._format_cost_response(facility_id, query, batch_id), 
+                self._format_cost_response(facility_id, query, batch_id),
                 query, corrected_query, was_corrected
             )
         
@@ -51,7 +74,7 @@ class EnhancedQueryRouter:
                 query, corrected_query, was_corrected
             )
         
-        if 'quality' in categories: 
+        if 'quality' in categories:
             return self._add_correction_note(
                 self._format_quality_response(facility_id, query, batch_id),
                 query, corrected_query, was_corrected
@@ -63,13 +86,7 @@ class EnhancedQueryRouter:
                 query, corrected_query, was_corrected
             )
         
-        # Priority 4: General conversational templates
-        if any(word in query_lower for word in ['calculate', 'calculation', 'how did you']):
-            follow_up = self.templates.get_follow_up_response(query, {})
-            if follow_up:
-                return self._add_correction_note(follow_up, query, corrected_query, was_corrected)
-        
-        # Fallback with suggestion
+        # Fallback: help message
         fallback = {
             'type': 'help',
             'message': "I can analyze your manufacturing data for cost variance, equipment performance, quality issues, and operational efficiency.\n\nTry asking:\n• 'What equipment needs attention?'\n• 'Show me cost risks'\n• 'What are my quality issues?'\n• 'How is my efficiency?'",
@@ -84,7 +101,6 @@ class EnhancedQueryRouter:
         if was_corrected and original.lower() != corrected.lower():
             correction_note = f"\n\n*Interpreting: '{corrected}'*"
             response['message'] = response['message'] + correction_note
-        
         return response
     
     def _format_cost_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
@@ -109,37 +125,21 @@ class EnhancedQueryRouter:
             }
         
         if 'error' in result:
-            if result['error'] == 'insufficient_data':
-                return {
-                    'type': 'cost_analysis',
-                    'message': result['message'],
-                    'insights': [],
-                    'total_impact': 0,
-                    'required_fields': result.get('required_fields', [])
-                }
-            elif result['error'] == 'no_data':
-                return {
-                    'type': 'cost_analysis',
-                    'message': result['message'],
-                    'insights': [],
-                    'total_impact': 0
-                }
+            return {
+                'type': 'cost_analysis',
+                'message': result.get('message', 'Analysis error occurred'),
+                'insights': [],
+                'total_impact': 0
+            }
         
         predictions = result.get('predictions', [])
         validation = result.get('validation', {})
         thresholds = result.get('thresholds', {})
         
         if not predictions:
-            message = "Good news! No significant cost variances detected in your data. All work orders are tracking close to planned costs."
-            
+            message = "Good news! No significant cost variances detected in your data."
             if validation and validation.get('score', 100) < 85:
                 message += f"\n\n📊 **Data Quality: {validation['score']}/100** ({validation['grade']})"
-                if validation.get('limitations'):
-                    message += "\n" + "\n".join(f"• {lim}" for lim in validation['limitations'])
-            
-            if thresholds and thresholds.get('variance_threshold'):
-                message += f"\n\n*Analysis threshold: ${thresholds['variance_threshold']:,.0f} ({thresholds.get('variance_threshold_pct', 5)}% of average work order value)*"
-            
             return {
                 'type': 'cost_analysis',
                 'message': message,
@@ -149,15 +149,10 @@ class EnhancedQueryRouter:
         
         top_risk = predictions[0]
         message = f"I'm tracking **{len(predictions)} work orders** with significant cost variances.\n\n"
-        message += f"Your biggest concern is **{top_risk['work_order_number']}** - showing **${abs(top_risk['predicted_variance']):,.0f}** variance with **{top_risk['confidence']}% confidence**.\n\n"
+        message += f"Your biggest concern is **{top_risk['work_order_number']}** - showing **${abs(top_risk['predicted_variance']):,.0f}** variance.\n\n"
         
         if result.get('total_impact'):
             message += f"**Total cost exposure:** ${result['total_impact']:,.0f}\n\n"
-        
-        if validation and validation.get('score', 100) < 85:
-            message += f"📊 **Data Quality: {validation['score']}/100** ({validation['grade']})\n"
-            if validation.get('limitations'):
-                message += "\n".join(f"• {lim}" for lim in validation['limitations'][:2]) + "\n\n"
         
         message += f"**My recommendation:** Review material costs and labor planning for {top_risk['work_order_number']} first."
         
@@ -179,10 +174,10 @@ class EnhancedQueryRouter:
                 'total_impact': 0
             }
         
-        if not result['predictions'] or len(result['predictions']) == 0:
+        if not result.get('predictions') or len(result['predictions']) == 0:
             return {
                 'type': 'equipment_analysis',
-                'message': "Your equipment is performing well - no assets are showing failure risk patterns right now.",
+                'message': "Your equipment is performing well - no assets showing failure risk patterns right now.",
                 'insights': [],
                 'total_impact': 0
             }
@@ -214,9 +209,9 @@ class EnhancedQueryRouter:
         
         primary = analysis.get('primary_issue', 'labor')
         if primary == 'labor':
-            message += "**Recommendation:** Schedule maintenance for this equipment. Performance degradation is causing labor overruns."
+            message += "**Recommendation:** Schedule maintenance - performance degradation is causing labor overruns."
         elif primary == 'quality':
-            message += "**Recommendation:** Immediate inspection required. Quality issues are causing significant scrap."
+            message += "**Recommendation:** Immediate inspection required - quality issues causing significant scrap."
         else:
             message += "**Recommendation:** Address quality issues to reduce material waste."
         
@@ -227,18 +222,18 @@ class EnhancedQueryRouter:
             'type': 'equipment_analysis',
             'message': message,
             'insights': result['predictions'],
-            'total_impact': result['total_downtime_cost']
+            'total_impact': result.get('total_downtime_cost', 0)
         }
 
     def _format_quality_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
         result = self.quality_analyzer.analyze_quality_patterns(facility_id, batch_id)
         
-        if not result['quality_issues'] or len(result['quality_issues']) == 0:
+        if not result.get('quality_issues') or len(result['quality_issues']) == 0:
             return {
                 'type': 'quality_analysis',
-                'message': f"Quality looks solid - overall scrap rate of {result['overall_scrap_rate']} units per order is within normal range.",
+                'message': f"Quality looks solid - overall scrap rate of {result.get('overall_scrap_rate', 0):.2f} units per order is within normal range.",
                 'insights': [],
-                'total_impact': result['total_scrap_cost']
+                'total_impact': result.get('total_scrap_cost', 0)
             }
         
         top_issue = result['quality_issues'][0]
@@ -269,9 +264,9 @@ class EnhancedQueryRouter:
         
         primary = analysis.get('primary_driver', 'scrap')
         if primary == 'scrap':
-            message += f"**Recommendation:** Investigate {top_issue['material_code']} supplier quality. High scrap rate indicates material or process issues."
+            message += f"**Recommendation:** Investigate {top_issue['material_code']} supplier quality - high scrap rate indicates material or process issues."
         elif primary == 'rework':
-            message += f"**Recommendation:** Review production process for {top_issue['material_code']}. Excessive rework time suggests training or equipment issues."
+            message += f"**Recommendation:** Review production process for {top_issue['material_code']} - excessive rework time suggests training or equipment issues."
         else:
             message += "**Recommendation:** Audit material usage procedures to reduce waste."
         
@@ -282,16 +277,16 @@ class EnhancedQueryRouter:
             'type': 'quality_analysis',
             'message': message,
             'insights': result['quality_issues'],
-            'total_impact': result['total_scrap_cost']
+            'total_impact': result.get('total_scrap_cost', 0)
         }
     
     def _format_efficiency_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:
         result = self.efficiency_analyzer.analyze_efficiency_patterns(facility_id, batch_id)
         
-        if not result['efficiency_insights']:
+        if not result.get('efficiency_insights'):
             return {
                 'type': 'efficiency_analysis',
-                'message': f"Efficiency looks good - overall facility efficiency of {result['overall_efficiency']}% is solid.",
+                'message': f"Efficiency looks good - overall facility efficiency of {result.get('overall_efficiency', 0)}% is solid.",
                 'insights': [],
                 'total_impact': 0
             }
@@ -312,5 +307,5 @@ class EnhancedQueryRouter:
             'type': 'efficiency_analysis',
             'message': message,
             'insights': result['efficiency_insights'],
-            'total_impact': result['total_savings_opportunity']
+            'total_impact': result.get('total_savings_opportunity', 0)
         }

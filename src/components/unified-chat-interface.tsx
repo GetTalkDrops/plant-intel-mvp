@@ -357,28 +357,132 @@ You can try uploading again or contact support if the issue persists.`,
         };
         setMessages((prev) => [...prev, successMessage]);
 
-        if (uploadResult.autoAnalysis) {
-          const analysisMessage: ChatMessage = {
-            id: "analysis-" + (Date.now() + 1).toString(),
-            message: uploadResult.autoAnalysis.message,
+        // Process auto-analysis results
+        if (uploadResult.autoAnalysis && !uploadResult.autoAnalysis.error) {
+          const analysis = uploadResult.autoAnalysis;
+
+          // Executive summary message
+          const summaryMessage: ChatMessage = {
+            id: "summary-" + Date.now().toString(),
+            message: analysis.executiveSummary,
             isUser: false,
             timestamp: new Date().toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
             }),
-            cards: uploadResult.autoAnalysis.cards,
-            followUps: uploadResult.autoAnalysis.followUps,
           };
 
           setTimeout(() => {
-            setMessages((prev) => [...prev, analysisMessage]);
-          }, 1000);
+            setMessages((prev) => [...prev, summaryMessage]);
+          }, 500);
+
+          // Cost analysis with cards
+          if (analysis.cost?.cards && analysis.cost.cards.length > 0) {
+            const costMessage: ChatMessage = {
+              id: "cost-" + Date.now().toString(),
+              message: analysis.cost.text,
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              cards: analysis.cost.cards,
+              followUps: analysis.cost.followUps,
+            };
+
+            setTimeout(() => {
+              setMessages((prev) => [...prev, costMessage]);
+            }, 1000);
+          }
+
+          // Equipment analysis - need to format
+          if (
+            analysis.equipment?.insights &&
+            analysis.equipment.insights.length > 0
+          ) {
+            // Import the formatter
+            import("@/lib/format-ml-response").then(
+              ({ formatEquipmentResponse }) => {
+                const formatted = formatEquipmentResponse(analysis.equipment);
+                const equipmentMessage: ChatMessage = {
+                  id: "equipment-" + Date.now().toString(),
+                  message: formatted.text,
+                  isUser: false,
+                  timestamp: new Date().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  cards: formatted.cards,
+                  followUps: formatted.followUps,
+                };
+
+                setTimeout(() => {
+                  setMessages((prev) => [...prev, equipmentMessage]);
+                }, 1500);
+              }
+            );
+          }
+
+          // Quality analysis - need to format
+          if (
+            analysis.quality?.insights &&
+            analysis.quality.insights.length > 0
+          ) {
+            import("@/lib/format-ml-response").then(
+              ({ formatQualityResponse }) => {
+                const formatted = formatQualityResponse(analysis.quality);
+                const qualityMessage: ChatMessage = {
+                  id: "quality-" + Date.now().toString(),
+                  message: formatted.text,
+                  isUser: false,
+                  timestamp: new Date().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  cards: formatted.cards,
+                  followUps: formatted.followUps,
+                };
+
+                setTimeout(() => {
+                  setMessages((prev) => [...prev, qualityMessage]);
+                }, 2000);
+              }
+            );
+          }
+
+          // Efficiency analysis - need to format
+          if (
+            analysis.efficiency?.insights &&
+            analysis.efficiency.insights.length > 0
+          ) {
+            import("@/lib/format-ml-response").then(
+              ({ formatEfficiencyResponse }) => {
+                const formatted = formatEfficiencyResponse(analysis.efficiency);
+                const efficiencyMessage: ChatMessage = {
+                  id: "efficiency-" + Date.now().toString(),
+                  message: formatted.text,
+                  isUser: false,
+                  timestamp: new Date().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  cards: formatted.cards,
+                  followUps: formatted.followUps,
+                };
+
+                setTimeout(() => {
+                  setMessages((prev) => [...prev, efficiencyMessage]);
+                }, 2500);
+              }
+            );
+          }
         }
       } else {
         throw new Error(uploadResult.error || "Upload failed");
       }
     } catch (error) {
       console.error("Upload error:", error);
+
       const errorMessage: ChatMessage = {
         id: "storage-error-" + Date.now().toString(),
         message: "There was an error uploading your data. Please try again.",
@@ -399,113 +503,18 @@ You can try uploading again or contact support if the issue persists.`,
 
     console.log("=== MAPPING CONFIRM STARTED ===");
     console.log("Pending mapping:", pendingMapping.fileName);
-    console.log(
-      "Batch signatures:",
-      pendingMapping.headerSignature,
-      pendingMapping.fileHash
-    );
 
     setShowMappingModal(false);
-    const currentPending = pendingMapping;
-    setPendingMapping(null);
-    setIsLoading(true);
 
-    try {
-      console.log("Building mapped data...");
-      const mappedData = currentPending.allRows.map((row: string[]) => {
-        const rowData: Record<string, string> = {};
-        currentPending.headers.forEach((header: string, index: number) => {
-          rowData[header] = row[index] || "";
-        });
-        return rowData;
-      });
-      console.log("Mapped data rows:", mappedData.length);
-      console.log("Calling upload API...");
-      console.log(
-        `Uploading ${mappedData.length} rows with ${confirmedMappings.length} mapped fields`
-      );
-
-      const uploadResponse = await fetch("/api/upload-csv", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mappedData: mappedData,
-          mapping: confirmedMappings,
-          fileName: currentPending.fileName,
-          userEmail: user?.email || "skinner.chris@gmail.com",
-          headerSignature: currentPending.headerSignature,
-          fileHash: currentPending.fileHash,
-        }),
-      });
-
-      const uploadResult = await uploadResponse.json();
-
-      if (uploadResponse.ok && uploadResult.success) {
-        console.log("Upload successful:", uploadResult);
-
-        const successMessage: ChatMessage = {
-          id: "storage-success-" + Date.now().toString(),
-          message: `✅ Successfully imported ${uploadResult.recordsInserted} work orders from ${currentPending.fileName}`,
-          isUser: false,
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        };
-        setMessages((prev) => [...prev, successMessage]);
-
-        if (uploadResult.autoAnalysis && !uploadResult.autoAnalysis.error) {
-          // Executive summary first
-          const summaryMessage: ChatMessage = {
-            id: "summary-" + Date.now().toString(),
-            message: uploadResult.autoAnalysis.executiveSummary,
-            isUser: false,
-            timestamp: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          };
-
-          // Cost analysis with cards (if exists)
-          const messages: ChatMessage[] = [summaryMessage];
-
-          if (uploadResult.autoAnalysis.cost) {
-            messages.push({
-              id: "cost-" + (Date.now() + 1).toString(),
-              message: uploadResult.autoAnalysis.cost.text,
-              isUser: false,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              cards: uploadResult.autoAnalysis.cost.cards,
-              followUps: uploadResult.autoAnalysis.cost.followUps,
-            });
-          }
-
-          setTimeout(() => {
-            setMessages((prev) => [...prev, ...messages]);
-          }, 1000);
-        }
-      } else {
-        throw new Error(uploadResult.error || "Upload failed");
-      }
-    } catch (error) {
-      console.error("Upload error:", error);
-
-      const errorMessage: ChatMessage = {
-        id: "storage-error-" + Date.now().toString(),
-        message: "There was an error uploading your data. Please try again.",
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
+    await handleMappingConfirmDirect({
+      mappings: confirmedMappings,
+      unmappedColumns: pendingMapping.unmappedColumns,
+      allRows: pendingMapping.allRows,
+      headers: pendingMapping.headers,
+      fileName: pendingMapping.fileName,
+      headerSignature: pendingMapping.headerSignature,
+      fileHash: pendingMapping.fileHash,
+    });
   };
 
   const handleMappingCancel = () => {
