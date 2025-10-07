@@ -20,32 +20,41 @@ class EquipmentPredictor:
         self.supabase: Client = create_client(url, key)
     
     def predict_failures(self, facility_id: int = 1, batch_id: str = None) -> Dict:
-        """Predict equipment failures with breakdown analysis"""
+        """Predict equipment failures with pattern detection and breakdown analysis"""
         
-        query = self.supabase.table('work_orders')\
-            .select('*')\
-            .eq('facility_id', facility_id)\
-            .eq('demo_mode', True)
-        
+        query = self.supabase.table("work_orders").select("*").eq("facility_id", facility_id)
+
         if batch_id:
-            query = query.eq('uploaded_csv_batch', batch_id)
+            query = query.eq("uploaded_csv_batch", batch_id)
+        else:
+            # Get most recent batch if no batch_id specified
+            recent_batch = self.supabase.table("work_orders")\
+                .select("uploaded_csv_batch")\
+                .eq("facility_id", facility_id)\
+                .order("uploaded_csv_batch")\
+                .execute()
+            
+            if recent_batch.data and len(recent_batch.data) > 0:
+                batch_id = recent_batch.data[-1]["uploaded_csv_batch"]
+                query = query.eq("uploaded_csv_batch", batch_id)
         
         response = query.execute()
         
         if not response.data:
-            return {"predictions": [], "total_downtime_cost": 0}
+            return {"insights": [], "patterns": [], "total_impact": 0}
         
         df = pd.DataFrame(response.data)
         
         if 'machine_id' not in df.columns or df['machine_id'].isna().all():
             return {
-                "predictions": [],
-                "total_downtime_cost": 0,
+                "insights": [],
+                "patterns": [],
+                "total_impact": 0,
                 "message": "No equipment data available. Upload data with machine_id field for equipment analysis."
             }
         
         unique_machines = df['machine_id'].dropna().unique()
-        predictions = []
+        insights = []
         
         for machine_id in unique_machines:
             machine_data = df[df['machine_id'] == machine_id]
@@ -57,7 +66,7 @@ class EquipmentPredictor:
                 breakdown = self._calculate_equipment_breakdown(machine_data)
                 
                 if breakdown['total_impact'] > 500:
-                    predictions.append({
+                    insights.append({
                         'equipment_id': machine_id,
                         'failure_probability': breakdown['risk_score'],
                         'estimated_downtime_cost': breakdown['total_impact'],
@@ -69,12 +78,47 @@ class EquipmentPredictor:
                 traceback.print_exc()
                 continue
         
-        predictions.sort(key=lambda x: x['estimated_downtime_cost'], reverse=True)
-        total_cost = sum(p['estimated_downtime_cost'] for p in predictions)
+        # Detect patterns - machines with quality issues
+        patterns = []
+        quality_machines = []
+        
+        for machine_id in unique_machines:
+            machine_data = df[df['machine_id'] == machine_id]
+            quality_issue_count = (machine_data['quality_issues'].astype(str).str.lower() == 'true').sum()
+            
+            if quality_issue_count >= 3:  # Pattern threshold
+                total_scrap = int(machine_data['units_scrapped'].fillna(0).sum())
+                scrap_cost = total_scrap * 75
+                
+                quality_machines.append({
+                    'machine_id': machine_id,
+                    'quality_issue_count': int(quality_issue_count),
+                    'total_orders': len(machine_data),
+                    'scrap_units': int(total_scrap),
+                    'estimated_impact': int(scrap_cost),
+                    'work_orders': list(machine_data['work_order_number'])
+                })
+        
+        if quality_machines:
+            quality_machines.sort(key=lambda x: x['quality_issue_count'], reverse=True)
+            for machine in quality_machines:
+                patterns.append({
+                    'type': 'equipment_quality',
+                    'identifier': machine['machine_id'],
+                    'order_count': machine['quality_issue_count'],
+                    'total_impact': machine['estimated_impact'],
+                    'issue_rate': (machine['quality_issue_count'] / machine['total_orders']) * 100,
+                    'work_orders': machine['work_orders'][:10]  # Limit to 10 for display
+                })
+        
+        insights.sort(key=lambda x: x['estimated_downtime_cost'], reverse=True)
+        total_cost = sum(p['estimated_downtime_cost'] for p in insights)
         
         return {
-            "predictions": predictions[:10],
-            "total_downtime_cost": total_cost
+            "insights": insights[:10],
+            "patterns": patterns,
+            "total_impact": total_cost,
+            "message": f"Found {len(insights)} equipment issues and {len(patterns)} patterns"
         }
     
     def _calculate_equipment_breakdown(self, machine_data: pd.DataFrame) -> dict:

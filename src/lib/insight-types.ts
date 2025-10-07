@@ -20,7 +20,7 @@ export interface InsightCard {
 export interface InsightItem {
   id: string;
   amount: number;
-  confidence: number;
+  confidence?: number;
   breakdown?:
     | {
         // Cost breakdown

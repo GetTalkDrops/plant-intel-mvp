@@ -395,32 +395,67 @@ You can try uploading again or contact support if the issue persists.`,
             }, 1000);
           }
 
-          // Equipment analysis - need to format
+          // Equipment analysis - already formatted by backend
           if (
-            analysis.equipment?.insights &&
-            analysis.equipment.insights.length > 0
+            analysis.equipment?.cards &&
+            analysis.equipment.cards.length > 0
           ) {
-            // Import the formatter
-            import("@/lib/format-ml-response").then(
-              ({ formatEquipmentResponse }) => {
-                const formatted = formatEquipmentResponse(analysis.equipment);
-                const equipmentMessage: ChatMessage = {
-                  id: "equipment-" + Date.now().toString(),
-                  message: formatted.text,
-                  isUser: false,
-                  timestamp: new Date().toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                  cards: formatted.cards,
-                  followUps: formatted.followUps,
-                };
+            const equipmentMessage: ChatMessage = {
+              id: "equipment-" + Date.now().toString(),
+              message: analysis.equipment.text,
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              cards: analysis.equipment.cards,
+              followUps: analysis.equipment.followUps,
+            };
 
-                setTimeout(() => {
-                  setMessages((prev) => [...prev, equipmentMessage]);
-                }, 1500);
-              }
-            );
+            setTimeout(() => {
+              setMessages((prev) => [...prev, equipmentMessage]);
+            }, 1500);
+          }
+
+          // Quality analysis - already formatted by backend
+          if (analysis.quality?.cards && analysis.quality.cards.length > 0) {
+            const qualityMessage: ChatMessage = {
+              id: "quality-" + Date.now().toString(),
+              message: analysis.quality.text,
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              cards: analysis.quality.cards,
+              followUps: analysis.quality.followUps,
+            };
+
+            setTimeout(() => {
+              setMessages((prev) => [...prev, qualityMessage]);
+            }, 2000);
+          }
+
+          // Efficiency analysis - already formatted by backend
+          if (
+            analysis.efficiency?.cards &&
+            analysis.efficiency.cards.length > 0
+          ) {
+            const efficiencyMessage: ChatMessage = {
+              id: "efficiency-" + Date.now().toString(),
+              message: analysis.efficiency.text,
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              cards: analysis.efficiency.cards,
+              followUps: analysis.efficiency.followUps,
+            };
+
+            setTimeout(() => {
+              setMessages((prev) => [...prev, efficiencyMessage]);
+            }, 2500);
           }
 
           // Quality analysis - need to format

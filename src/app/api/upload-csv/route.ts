@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { csvStorageService } from "@/lib/csv-storage";
 import { isDemoAccount, DEMO_FACILITY_ID } from "@/lib/demo-account";
-import { formatCostAnalysisResponse } from "@/lib/format-ml-response";
+import {
+  formatCostAnalysisResponse,
+  formatEquipmentResponse,
+  formatQualityResponse,
+  formatEfficiencyResponse,
+} from "@/lib/format-ml-response";
 
 export async function POST(request: NextRequest) {
   try {
@@ -172,17 +177,30 @@ export async function POST(request: NextRequest) {
           "Analysis complete. All metrics within normal ranges. No significant issues detected.";
       }
 
-      // Format cost analysis with cards
+      // Format all analyzers
       const formattedCost = costData
         ? formatCostAnalysisResponse(costData)
+        : null;
+      console.log("Cost data has patterns:", costData?.patterns?.length || 0);
+
+      const formattedEquipment = equipmentData
+        ? formatEquipmentResponse(equipmentData)
+        : null;
+
+      const formattedQuality = qualityData
+        ? formatQualityResponse(qualityData)
+        : null;
+
+      const formattedEfficiency = efficiencyData
+        ? formatEfficiencyResponse(efficiencyData)
         : null;
 
       autoAnalysis = {
         executiveSummary,
         cost: formattedCost,
-        equipment: equipmentData,
-        quality: qualityData,
-        efficiency: efficiencyData,
+        equipment: formattedEquipment,
+        quality: formattedQuality,
+        efficiency: formattedEfficiency,
         totalImpact,
       };
 

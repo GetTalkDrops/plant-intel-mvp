@@ -69,44 +69,17 @@ function isCostResponse(
 
 function isEquipmentResponse(
   response: MLChatResponse
-): response is MLChatResponse & {
-  insights: Array<{
-    equipment_id: string;
-    failure_probability: number;
-    estimated_downtime_cost: number;
-    orders_analyzed: number;
-    analysis: unknown;
-  }>;
-} {
+): response is MLChatResponse & { insights: unknown[] } {
   return (
-    response.type === "equipment_analysis" &&
-    Array.isArray(response.insights) &&
-    response.insights.length > 0 &&
-    typeof response.insights[0] === "object" &&
-    response.insights[0] !== null &&
-    "equipment_id" in response.insights[0]
+    response.type === "equipment_analysis" && Array.isArray(response.insights)
   );
 }
 
 function isQualityResponse(
   response: MLChatResponse
-): response is MLChatResponse & {
-  insights: Array<{
-    material_code: string;
-    scrap_rate_per_order: number;
-    quality_issue_rate: number;
-    estimated_cost_impact: number;
-    orders_analyzed: number;
-    analysis: unknown;
-  }>;
-} {
+): response is MLChatResponse & { insights: unknown[] } {
   return (
-    response.type === "quality_analysis" &&
-    Array.isArray(response.insights) &&
-    response.insights.length > 0 &&
-    typeof response.insights[0] === "object" &&
-    response.insights[0] !== null &&
-    "material_code" in response.insights[0]
+    response.type === "quality_analysis" && Array.isArray(response.insights)
   );
 }
 
@@ -168,7 +141,10 @@ function shouldUseAI(query: string, mlResponse: string): boolean {
   const hasComplexQuestion = complexQuestions.some((phrase) =>
     queryLower.includes(phrase)
   );
-  const isShortMLResponse = mlResponse.length < 100;
+  const isShortMLResponse =
+    mlResponse.length < 50 &&
+    !mlResponse.includes("performing well") &&
+    !mlResponse.includes("looks solid");
   const hasErrorInML =
     mlResponse.includes("I need") || mlResponse.includes("missing");
 

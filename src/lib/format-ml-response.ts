@@ -151,19 +151,33 @@ interface MLCostAnalysisData {
   validation?: MLValidation;
   thresholds?: MLThresholds;
   predictions?: MLPrediction[];
+  patterns?: Pattern[];
   total_impact?: number;
   error?: string;
   message?: string;
 }
 
+interface Pattern {
+  type: string;
+  identifier: string;
+  order_count: number;
+  total_impact: number;
+  avg_variance?: number;
+  issue_rate?: number;
+  defect_rate?: number;
+  work_orders?: string[];
+}
+
 interface MLEquipmentData {
   insights: EquipmentPrediction[]; // Changed from predictions to insights
+  patterns?: Pattern[];
   total_impact: number; // Changed from total_downtime_cost to total_impact
   message?: string;
 }
 
 interface MLQualityData {
   insights: QualityIssue[];
+  patterns?: Pattern[];
   overall_scrap_rate: number;
   total_scrap_cost?: number;
   total_impact?: number;
@@ -250,7 +264,7 @@ export function formatCostAnalysisResponse(
   const high = mlData.predictions.filter((p) => p.risk_level === "high");
   const medium = mlData.predictions.filter((p) => p.risk_level === "medium");
 
-  const sections = [];
+  const sections: InsightCard["sections"] = [];
 
   if (critical.length > 0) {
     sections.push({
@@ -322,6 +336,54 @@ export function formatCostAnalysisResponse(
     });
   }
 
+  // Add patterns section if patterns exist
+  if (mlData.patterns && mlData.patterns.length > 0) {
+    const materialPatterns = mlData.patterns.filter(
+      (p) => p.type === "material"
+    );
+    const supplierPatterns = mlData.patterns.filter(
+      (p) => p.type === "supplier"
+    );
+
+    if (materialPatterns.length > 0) {
+      sections.push({
+        severity: "warning" as const,
+        label: `Material Patterns (${materialPatterns.length} found)`,
+        count: materialPatterns.length,
+        items: materialPatterns.map((p) => ({
+          id: `${p.identifier} (${p.order_count} orders)`,
+          amount: Math.abs(p.total_impact),
+          confidence: 0,
+          breakdown: undefined,
+        })),
+        actions: [
+          `Review ${materialPatterns[0].identifier} - appears in ${materialPatterns[0].order_count} orders`,
+          "Investigate material pricing changes",
+          "Check quality from this material batch",
+        ],
+      });
+    }
+
+    if (supplierPatterns.length > 0) {
+      sections.push({
+        severity: "warning" as const,
+        label: `Supplier Patterns (${supplierPatterns.length} found)`,
+        count: supplierPatterns.length,
+        items: supplierPatterns.map((p) => ({
+          id: `${p.identifier} (${p.order_count} orders)`,
+          amount: Math.abs(p.total_impact),
+          confidence: 0,
+          breakdown: undefined,
+        })),
+        actions: [
+          `${supplierPatterns[0].identifier} materials in ${supplierPatterns[0].order_count} orders`,
+          "Schedule supplier review meeting",
+          "Evaluate alternate suppliers",
+        ],
+      });
+    }
+  }
+
   let summaryText = `Found ${mlData.predictions.length} work order${
     mlData.predictions.length === 1 ? "" : "s"
   } with significant cost variances`;
@@ -330,6 +392,13 @@ export function formatCostAnalysisResponse(
     summaryText += `, totaling $${mlData.total_impact.toLocaleString()}`;
   }
   summaryText += ".";
+
+  // Add pattern summary
+  if (mlData.patterns && mlData.patterns.length > 0) {
+    summaryText += `\n\nFound ${mlData.patterns.length} pattern${
+      mlData.patterns.length === 1 ? "" : "s"
+    } across multiple orders.`;
+  }
 
   if (mlData.validation && mlData.validation.score < 85) {
     summaryText += `\n\n📊 **Data Quality: ${mlData.validation.score}/100** (${mlData.validation.grade})`;
@@ -389,7 +458,7 @@ export function formatEquipmentResponse(
   );
   const medium = mlData.insights.filter((p) => p.failure_probability < 60);
 
-  const sections = [];
+  const sections: InsightCard["sections"] = [];
 
   if (critical.length > 0) {
     sections.push({
@@ -458,6 +527,29 @@ export function formatEquipmentResponse(
     });
   }
 
+  // Add patterns section for equipment
+  if (mlData.patterns && mlData.patterns.length > 0) {
+    sections.push({
+      severity: "warning" as const,
+      label: `Equipment Quality Patterns (${mlData.patterns.length} found)`,
+      count: mlData.patterns.length,
+      items: mlData.patterns.map((p) => ({
+        id: `${p.identifier} (${p.order_count} quality issues)`,
+        amount: p.total_impact,
+        confidence: 0,
+        breakdown: undefined,
+      })),
+      actions:
+        mlData.patterns.length > 0
+          ? [
+              `${mlData.patterns[0].identifier} has quality issues in ${mlData.patterns[0].order_count} orders`,
+              "Schedule equipment inspection",
+              "Review maintenance history",
+            ]
+          : [],
+    });
+  }
+
   let summaryText = `Found ${mlData.insights.length} equipment asset${
     mlData.insights.length === 1 ? "" : "s"
   } showing failure risk patterns`;
@@ -466,6 +558,12 @@ export function formatEquipmentResponse(
     summaryText += `, with total cost exposure of $${mlData.total_impact.toLocaleString()}`;
   }
   summaryText += ".";
+
+  if (mlData.patterns && mlData.patterns.length > 0) {
+    summaryText += `\n\n${mlData.patterns.length} equipment asset${
+      mlData.patterns.length === 1 ? "" : "s"
+    } showing recurring quality issues.`;
+  }
 
   const summaryCard: InsightCard = {
     type: critical.length > 0 ? "critical" : "warning",
@@ -488,8 +586,9 @@ export function formatEquipmentResponse(
 
 export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
   if (!mlData.insights || mlData.insights.length === 0) {
+    const scrapRate = mlData.overall_scrap_rate || 0;
     return {
-      text: `Quality looks solid - overall scrap rate of ${mlData.overall_scrap_rate.toFixed(
+      text: `Quality looks solid - overall scrap rate of ${scrapRate.toFixed(
         2
       )} units per order is within normal range.`,
       followUps: ["Check equipment status", "Show me cost variances"],
@@ -507,7 +606,7 @@ export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
     (q) => q.estimated_cost_impact <= 10000
   );
 
-  const sections = [];
+  const sections: InsightCard["sections"] = [];
 
   if (critical.length > 0) {
     sections.push({
@@ -576,6 +675,31 @@ export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
     });
   }
 
+  // Add patterns section for quality
+  if (mlData.patterns && mlData.patterns.length > 0) {
+    sections.push({
+      severity: "warning" as const,
+      label: `Material Quality Patterns (${mlData.patterns.length} found)`,
+      count: mlData.patterns.length,
+      items: mlData.patterns.map((p) => ({
+        id: p.identifier,
+        amount: p.total_impact,
+        confidence: p.defect_rate,
+        breakdown: undefined,
+      })),
+      actions:
+        mlData.patterns.length > 0
+          ? [
+              `${mlData.patterns[0].identifier} has ${(
+                mlData.patterns[0].defect_rate || 0
+              ).toFixed(0)}% defect rate`,
+              "Investigate material batch issues",
+              "Contact supplier about quality",
+            ]
+          : [],
+    });
+  }
+
   let summaryText = `Found quality issues with ${
     mlData.insights.length
   } material${mlData.insights.length === 1 ? "" : "s"}`;
@@ -585,6 +709,12 @@ export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
     summaryText += `, totaling $${totalCost.toLocaleString()} in cost impact`;
   }
   summaryText += `.`;
+
+  if (mlData.patterns && mlData.patterns.length > 0) {
+    summaryText += `\n\n${mlData.patterns.length} material${
+      mlData.patterns.length === 1 ? "" : "s"
+    } showing recurring defects.`;
+  }
 
   const summaryCard: InsightCard = {
     type: critical.length > 0 ? "critical" : "warning",
@@ -616,7 +746,7 @@ export function formatEfficiencyResponse(
   }
 
   // All efficiency issues are warnings (optimization opportunities)
-  const sections = [];
+  const sections: InsightCard["sections"] = [];
 
   const highImpact = mlData.insights.filter(
     (e) => e.potential_savings > 100000

@@ -20,23 +20,32 @@ class QualityAnalyzer:
         self.supabase: Client = create_client(url, key)
     
     def analyze_quality_patterns(self, facility_id: int = 1, batch_id: str = None) -> Dict:
-        """Analyze quality patterns with breakdown"""
+        """Analyze quality patterns with breakdown and pattern detection"""
         
-        query = self.supabase.table('work_orders')\
-            .select('*')\
-            .eq('facility_id', facility_id)\
-            .eq('demo_mode', True)
-        
+        query = self.supabase.table("work_orders").select("*").eq("facility_id", facility_id)
+
         if batch_id:
-            query = query.eq('uploaded_csv_batch', batch_id)
+            query = query.eq("uploaded_csv_batch", batch_id)
+        else:
+            # Get most recent batch if no batch_id specified
+            recent_batch = self.supabase.table("work_orders")\
+                .select("uploaded_csv_batch")\
+                .eq("facility_id", facility_id)\
+                .order("uploaded_csv_batch")\
+                .execute()
+            
+            if recent_batch.data and len(recent_batch.data) > 0:
+                batch_id = recent_batch.data[-1]["uploaded_csv_batch"]
+                query = query.eq("uploaded_csv_batch", batch_id)
         
         response = query.execute()
         
         if not response.data:
             return {
-                "quality_issues": [],
+                "insights": [],
+                "patterns": [],
                 "overall_scrap_rate": 0,
-                "total_scrap_cost": 0
+                "total_impact": 0
             }
         
         df = pd.DataFrame(response.data)
@@ -45,7 +54,7 @@ class QualityAnalyzer:
         total_orders = len(df)
         overall_scrap_rate = total_scrap / total_orders if total_orders > 0 else 0
         
-        quality_issues = []
+        insights = []
         
         if 'material_code' in df.columns:
             unique_materials = df['material_code'].dropna().unique()
@@ -60,7 +69,7 @@ class QualityAnalyzer:
                     breakdown = self._calculate_quality_breakdown(material_data)
                     
                     if breakdown['total_impact'] > 500 or breakdown['issue_rate'] > 10:
-                        quality_issues.append({
+                        insights.append({
                             'material_code': material_code,
                             'scrap_rate_per_order': breakdown['scrap_per_order'],
                             'quality_issue_rate': breakdown['issue_rate'],
@@ -73,13 +82,51 @@ class QualityAnalyzer:
                     traceback.print_exc()
                     continue
         
-        quality_issues.sort(key=lambda x: x['estimated_cost_impact'], reverse=True)
-        total_scrap_cost = sum(q['estimated_cost_impact'] for q in quality_issues)
+        # Detect patterns - materials with high defect rates
+        patterns = []
+        if 'material_code' in df.columns:
+            material_quality = []
+            
+            for material_code in df['material_code'].dropna().unique():
+                material_orders = df[df['material_code'] == material_code]
+                quality_issues = (material_orders['quality_issues'].astype(str).str.lower() == 'true').sum()
+                
+                if quality_issues >= 3:  # Pattern threshold
+                    total_scrap = int(material_orders['units_scrapped'].fillna(0).sum())
+                    defect_rate = (quality_issues / len(material_orders)) * 100
+                    scrap_cost = total_scrap * 75
+                    
+                    material_quality.append({
+                        'material_code': material_code,
+                        'defect_count': int(quality_issues),
+                        'total_orders': len(material_orders),
+                        'defect_rate': defect_rate,
+                        'scrap_units': int(total_scrap),
+                        'estimated_impact': int(scrap_cost),
+                        'work_orders': list(material_orders['work_order_number'])
+                    })
+            
+            if material_quality:
+                material_quality.sort(key=lambda x: x['defect_rate'], reverse=True)
+                for mat in material_quality:
+                    patterns.append({
+                        'type': 'material_quality',
+                        'identifier': mat['material_code'],
+                        'order_count': mat['defect_count'],
+                        'total_impact': mat['estimated_impact'],
+                        'defect_rate': mat['defect_rate'],
+                        'work_orders': mat['work_orders'][:10]  # Limit to 10 for display
+                    })
+        
+        insights.sort(key=lambda x: x['estimated_cost_impact'], reverse=True)
+        total_cost = sum(q['estimated_cost_impact'] for q in insights)
         
         return {
-            "quality_issues": quality_issues[:10],
+            "insights": insights[:10],
+            "patterns": patterns,
             "overall_scrap_rate": round(overall_scrap_rate, 3),
-            "total_scrap_cost": total_scrap_cost
+            "total_impact": total_cost,
+            "message": f"Found {len(insights)} quality issues and {len(patterns)} patterns"
         }
     
     def _calculate_quality_breakdown(self, material_data: pd.DataFrame) -> dict:

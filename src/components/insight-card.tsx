@@ -74,7 +74,7 @@ export function InsightCard({ card }: InsightCardProps) {
                 {Number(bd.material.variance).toLocaleString()}
                 {bd.material.percentage !== undefined && (
                   <span className="text-gray-500 ml-1">
-                    ({bd.material.percentage}%)
+                    ({bd.material.percentage.toFixed(1)}%)
                   </span>
                 )}
               </span>
@@ -94,7 +94,7 @@ export function InsightCard({ card }: InsightCardProps) {
                 {Number(bd.labor.variance).toLocaleString()}
                 {bd.labor.percentage !== undefined && (
                   <span className="text-gray-500 ml-1">
-                    ({bd.labor.percentage}%)
+                    ({bd.labor.percentage.toFixed(1)}%)
                   </span>
                 )}
               </span>
@@ -355,15 +355,21 @@ export function InsightCard({ card }: InsightCardProps) {
                           {item.id}
                         </span>
                         <span className="text-gray-700 font-semibold">
-                          ${item.amount.toLocaleString()} ({item.confidence}
-                          {card.category === "cost"
-                            ? "% confidence"
-                            : card.category === "equipment"
-                            ? "% risk"
-                            : card.category === "quality"
-                            ? "% issue rate"
-                            : "% efficiency"}
-                          )
+                          ${item.amount.toLocaleString()}
+                          {item.confidence !== undefined &&
+                          item.confidence > 0 ? (
+                            <span className="text-gray-500 ml-1">
+                              ({item.confidence.toFixed(1)}
+                              {card.category === "cost"
+                                ? "% confidence"
+                                : card.category === "equipment"
+                                ? "% risk"
+                                : card.category === "quality"
+                                ? "% issue rate"
+                                : "% efficiency"}
+                              )
+                            </span>
+                          ) : null}
                         </span>
                       </div>
 
