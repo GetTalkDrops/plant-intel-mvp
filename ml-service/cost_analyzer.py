@@ -4,6 +4,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
+from pattern_explainer import PatternExplainer
 
 class CostAnalyzer:
     def __init__(self):
@@ -17,9 +18,10 @@ class CostAnalyzer:
         
         self.supabase = create_client(url, key)
         self.LABOR_RATE_PER_HOUR = 200
+        self.explainer = PatternExplainer(labor_rate_per_hour=self.LABOR_RATE_PER_HOUR)
 
     def predict_cost_variance(self, facility_id: int = 1, batch_id: Optional[str] = None) -> Dict:
-        """Analyze cost variances with pattern detection across work orders"""
+        """Analyze cost variances with rich pattern narratives"""
         
         query = self.supabase.table("work_orders").select("*").eq("facility_id", facility_id)
         
@@ -98,7 +100,7 @@ class CostAnalyzer:
                 "message": f"No significant cost variances detected (threshold: ${variance_threshold:,.0f})",
             }
         
-        # Detect patterns - Material codes
+        # Detect patterns - Material codes WITH NARRATIVES
         material_patterns = []
         if "material_code" in df.columns and df["material_code"].notna().any():
             material_groups = significant.groupby("material_code").agg({
@@ -110,16 +112,37 @@ class CostAnalyzer:
             material_groups = material_groups[material_groups["order_count"] >= 3]
             
             for _, row in material_groups.iterrows():
+                # Get work orders for this material
+                material_work_orders = significant[
+                    significant["material_code"] == row["material_code"]
+                ].to_dict('records')
+                
+                # Generate rich narrative
+                pattern_data = {
+                    "identifier": row["material_code"],
+                    "order_count": int(row["order_count"]),
+                    "total_impact": float(row["total_impact"]),
+                    "avg_variance": float(row["avg_variance"]),
+                    "work_orders": row["work_orders"]
+                }
+                
+                narrative = self.explainer.explain_material_pattern(
+                    pattern_data,
+                    material_work_orders,
+                    df
+                )
+                
                 material_patterns.append({
                     "type": "material",
                     "identifier": row["material_code"],
                     "order_count": int(row["order_count"]),
                     "total_impact": float(row["total_impact"]),
                     "avg_variance": float(row["avg_variance"]),
-                    "work_orders": row["work_orders"]
+                    "work_orders": row["work_orders"],
+                    "narrative": narrative  # ADD RICH NARRATIVE
                 })
         
-        # Detect patterns - Supplier IDs
+        # Detect patterns - Supplier IDs WITH NARRATIVES
         supplier_patterns = []
         if "supplier_id" in df.columns and df["supplier_id"].notna().any():
             supplier_groups = significant.groupby("supplier_id").agg({
@@ -131,13 +154,34 @@ class CostAnalyzer:
             supplier_groups = supplier_groups[supplier_groups["order_count"] >= 3]
             
             for _, row in supplier_groups.iterrows():
+                # Get work orders for this supplier
+                supplier_work_orders = significant[
+                    significant["supplier_id"] == row["supplier_id"]
+                ].to_dict('records')
+                
+                # Generate rich narrative
+                pattern_data = {
+                    "identifier": row["supplier_id"],
+                    "order_count": int(row["order_count"]),
+                    "total_impact": float(row["total_impact"]),
+                    "avg_variance": float(row["avg_variance"]),
+                    "work_orders": row["work_orders"]
+                }
+                
+                narrative = self.explainer.explain_supplier_pattern(
+                    pattern_data,
+                    supplier_work_orders,
+                    df
+                )
+                
                 supplier_patterns.append({
                     "type": "supplier",
                     "identifier": row["supplier_id"],
                     "order_count": int(row["order_count"]),
                     "total_impact": float(row["total_impact"]),
                     "avg_variance": float(row["avg_variance"]),
-                    "work_orders": row["work_orders"]
+                    "work_orders": row["work_orders"],
+                    "narrative": narrative  # ADD RICH NARRATIVE
                 })
         
         all_patterns = material_patterns + supplier_patterns
@@ -187,7 +231,7 @@ class CostAnalyzer:
         return {
             "status": "success",
             "predictions": predictions,
-            "patterns": all_patterns,
+            "patterns": all_patterns,  # Now includes rich narratives
             "total_impact": total_impact,
             "message": f"Found {len(predictions)} work orders with significant cost variances and {len(all_patterns)} patterns"
         }
