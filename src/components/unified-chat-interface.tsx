@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
-import { CsvMappingModal } from "./csv-mapping-modal";
+import CsvMappingModal from "./csv-mapping-modal";
 import {
   processManufacturingQuery,
   type ManufacturingInsight,
@@ -14,6 +14,77 @@ import {
 import { processFileUpload, type ColumnMapping } from "@/lib/csvMapper";
 import { useAuth } from "@/contexts/AuthContext";
 import { InsightCard } from "@/lib/insight-types";
+
+function SavingsTracker({
+  savings,
+  onDismiss,
+}: {
+  savings: number;
+  onDismiss: () => void;
+}) {
+  const percentOfGoal = Math.min((savings / 50000) * 100, 100);
+
+  return (
+    <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-lg relative">
+      {/* Dismiss button */}
+      <button
+        onClick={onDismiss}
+        className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 transition-colors"
+        aria-label="Dismiss savings tracker"
+      >
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
+
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <div className="text-sm text-gray-600 font-medium">
+            Identified Savings Opportunity
+          </div>
+          <div className="text-2xl font-bold text-green-700">
+            ${savings.toLocaleString()}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-sm text-gray-600">ROI Guarantee Progress</div>
+          <div className="text-lg font-bold text-blue-600">
+            {percentOfGoal.toFixed(0)}% of $50K
+          </div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full bg-gray-200 rounded-full h-2">
+        <div
+          className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all duration-500"
+          style={{ width: `${percentOfGoal}%` }}
+        />
+      </div>
+
+      {percentOfGoal >= 100 && (
+        <div className="mt-2 text-sm text-green-700 font-medium">
+          ✓ Guarantee threshold exceeded!
+        </div>
+      )}
+
+      {/* Pilot indicator */}
+      <div className="mt-2 text-xs text-gray-500 italic">
+        30-day pilot • Tracking identified opportunities
+      </div>
+    </div>
+  );
+}
 
 type ChatMessage = {
   id: string;
@@ -52,6 +123,8 @@ export function UnifiedChatInterface() {
   const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(
     null
   );
+  const [cumulativeSavings, setCumulativeSavings] = useState(0);
+  const [savingsTrackerDismissed, setSavingsTrackerDismissed] = useState(false);
 
   // Landing page state
   const [landingChatInput, setLandingChatInput] = useState("");
@@ -345,7 +418,15 @@ You can try uploading again or contact support if the issue persists.`,
 
       if (uploadResponse.ok && uploadResult.success) {
         console.log("Upload successful:", uploadResult);
-
+        console.log("Cost cards:", uploadResult.autoAnalysis?.cost?.cards);
+        console.log(
+          "First card sections:",
+          uploadResult.autoAnalysis?.cost?.cards?.[0]?.sections
+        );
+        console.log(
+          "First section items:",
+          uploadResult.autoAnalysis?.cost?.cards?.[0]?.sections?.[0]?.items
+        );
         const successMessage: ChatMessage = {
           id: "storage-success-" + Date.now().toString(),
           message: `✅ Successfully imported ${uploadResult.recordsInserted} work orders from ${pendingData.fileName}`,
@@ -375,6 +456,27 @@ You can try uploading again or contact support if the issue persists.`,
           setTimeout(() => {
             setMessages((prev) => [...prev, summaryMessage]);
           }, 500);
+          if (uploadResult.autoAnalysis?.totalSavingsOpportunity) {
+            console.log(
+              "Found savings:",
+              uploadResult.autoAnalysis.totalSavingsOpportunity
+            );
+            setCumulativeSavings((prev) => {
+              const newTotal =
+                prev + uploadResult.autoAnalysis.totalSavingsOpportunity;
+              console.log("Updating savings from", prev, "to", newTotal);
+              return newTotal;
+            });
+          }
+          // Extract savings from cost analysis
+          if (uploadResult.autoAnalysis?.cost?.totalSavingsOpportunity) {
+            setCumulativeSavings(
+              (prev) =>
+                prev +
+                uploadResult.upLoadResult.autoAnalysis.cost
+                  .totalSavingsOpportunity
+            );
+          }
 
           // Cost analysis with cards
           if (analysis.cost?.cards && analysis.cost.cards.length > 0) {
@@ -394,15 +496,12 @@ You can try uploading again or contact support if the issue persists.`,
               setMessages((prev) => [...prev, costMessage]);
             }, 1000);
           }
-
-          // Equipment analysis - already formatted by backend
-          if (
-            analysis.equipment?.cards &&
-            analysis.equipment.cards.length > 0
-          ) {
+          // Equipment analysis - display even if no issues
+          if (analysis.equipment) {
             const equipmentMessage: ChatMessage = {
               id: "equipment-" + Date.now().toString(),
-              message: analysis.equipment.text,
+              message:
+                analysis.equipment.text || "No equipment data available.",
               isUser: false,
               timestamp: new Date().toLocaleTimeString([], {
                 hour: "2-digit",
@@ -417,11 +516,11 @@ You can try uploading again or contact support if the issue persists.`,
             }, 1500);
           }
 
-          // Quality analysis - already formatted by backend
-          if (analysis.quality?.cards && analysis.quality.cards.length > 0) {
+          // Quality analysis - display even if no issues
+          if (analysis.quality) {
             const qualityMessage: ChatMessage = {
               id: "quality-" + Date.now().toString(),
-              message: analysis.quality.text,
+              message: analysis.quality.text || "No quality data available.",
               isUser: false,
               timestamp: new Date().toLocaleTimeString([], {
                 hour: "2-digit",
@@ -436,14 +535,12 @@ You can try uploading again or contact support if the issue persists.`,
             }, 2000);
           }
 
-          // Efficiency analysis - already formatted by backend
-          if (
-            analysis.efficiency?.cards &&
-            analysis.efficiency.cards.length > 0
-          ) {
+          // Efficiency analysis - display even if no issues
+          if (analysis.efficiency) {
             const efficiencyMessage: ChatMessage = {
               id: "efficiency-" + Date.now().toString(),
-              message: analysis.efficiency.text,
+              message:
+                analysis.efficiency.text || "No efficiency data available.",
               isUser: false,
               timestamp: new Date().toLocaleTimeString([], {
                 hour: "2-digit",
@@ -456,60 +553,6 @@ You can try uploading again or contact support if the issue persists.`,
             setTimeout(() => {
               setMessages((prev) => [...prev, efficiencyMessage]);
             }, 2500);
-          }
-
-          // Quality analysis - need to format
-          if (
-            analysis.quality?.insights &&
-            analysis.quality.insights.length > 0
-          ) {
-            import("@/lib/format-ml-response").then(
-              ({ formatQualityResponse }) => {
-                const formatted = formatQualityResponse(analysis.quality);
-                const qualityMessage: ChatMessage = {
-                  id: "quality-" + Date.now().toString(),
-                  message: formatted.text,
-                  isUser: false,
-                  timestamp: new Date().toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                  cards: formatted.cards,
-                  followUps: formatted.followUps,
-                };
-
-                setTimeout(() => {
-                  setMessages((prev) => [...prev, qualityMessage]);
-                }, 2000);
-              }
-            );
-          }
-
-          // Efficiency analysis - need to format
-          if (
-            analysis.efficiency?.insights &&
-            analysis.efficiency.insights.length > 0
-          ) {
-            import("@/lib/format-ml-response").then(
-              ({ formatEfficiencyResponse }) => {
-                const formatted = formatEfficiencyResponse(analysis.efficiency);
-                const efficiencyMessage: ChatMessage = {
-                  id: "efficiency-" + Date.now().toString(),
-                  message: formatted.text,
-                  isUser: false,
-                  timestamp: new Date().toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                  cards: formatted.cards,
-                  followUps: formatted.followUps,
-                };
-
-                setTimeout(() => {
-                  setMessages((prev) => [...prev, efficiencyMessage]);
-                }, 2500);
-              }
-            );
           }
         }
       } else {
@@ -890,6 +933,13 @@ You can try uploading again or contact support if the issue persists.`,
     <div className="flex flex-col h-full bg-gray-50">
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
+          {cumulativeSavings > 0 && !savingsTrackerDismissed && (
+            <SavingsTracker
+              savings={cumulativeSavings}
+              onDismiss={() => setSavingsTrackerDismissed(true)}
+            />
+          )}
+
           {messages.map((message) => (
             <MessageBubble
               key={message.id}

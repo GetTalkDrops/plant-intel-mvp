@@ -1,6 +1,61 @@
 // src/lib/format-ml-response.ts
 import { InsightCard, AssistantMessage } from "./insight-types";
 
+// Pattern Narrative Interfaces
+interface PatternNarrative {
+  type: string;
+  identifier: string;
+  summary: {
+    orders_affected: number;
+    timespan_days: number;
+    total_variance: number;
+    avg_variance_per_order?: number;
+    variance_percentage?: number;
+  };
+  root_cause: {
+    primary_driver: string;
+    contributing_factors: string[];
+    confidence: string;
+  };
+  financial_impact: {
+    direct_overage: number;
+    pattern_scope: string;
+    avg_impact_per_order?: number;
+  };
+  recommended_actions: Array<{
+    priority: number;
+    type: string;
+    title: string;
+    description: string;
+    effort: string;
+    timeframe: string;
+    estimated_monthly_savings?: number;
+  }>;
+  data_gaps: Array<{
+    field: string;
+    impact: string;
+    description: string;
+  }>;
+  improvement_nudges: Array<{
+    field: string;
+    message: string;
+    estimated_value: string;
+    implementation: string;
+  }>;
+}
+
+interface Pattern {
+  type: string;
+  identifier: string;
+  order_count: number;
+  total_impact: number;
+  avg_variance?: number;
+  work_orders?: string[];
+  narrative?: PatternNarrative;
+  defect_rate?: number; // For quality patterns
+  issue_rate?: number; // For equipment patterns
+}
+
 interface MLPrediction {
   work_order_number: string;
   predicted_variance: number;
@@ -27,106 +82,6 @@ interface MLPrediction {
       };
     };
     primary_driver: "material" | "labor";
-  };
-}
-
-interface EquipmentPrediction {
-  equipment_id: string;
-  failure_probability: number;
-  estimated_downtime_cost: number;
-  orders_analyzed: number;
-  analysis: {
-    total_impact: number;
-    risk_score: number;
-    breakdown: {
-      labor: {
-        impact: number;
-        percentage: number;
-        avg_hours_over: number;
-        driver: string;
-      };
-      quality: {
-        impact: number;
-        percentage: number;
-        scrap_units: number;
-        affected_orders: number;
-        driver: string;
-      };
-      material_waste: {
-        impact: number;
-        percentage: number;
-        driver: string;
-      };
-    };
-    primary_issue: string;
-  };
-}
-
-interface QualityIssue {
-  material_code: string;
-  scrap_rate_per_order: number;
-  quality_issue_rate: number;
-  estimated_cost_impact: number;
-  orders_analyzed: number;
-  analysis: {
-    total_impact: number;
-    issue_rate: number;
-    scrap_per_order: number;
-    breakdown: {
-      scrap: {
-        cost: number;
-        percentage: number;
-        units: number;
-        driver: string;
-      };
-      rework: {
-        cost: number;
-        percentage: number;
-        hours: number;
-        driver: string;
-      };
-      material_waste: {
-        cost: number;
-        percentage: number;
-        driver: string;
-      };
-    };
-    primary_driver: string;
-  };
-}
-
-interface EfficiencyInsight {
-  operation_type: string;
-  efficiency_score: number;
-  labor_efficiency: number;
-  cost_efficiency: number;
-  orders_analyzed: number;
-  potential_savings: number;
-  analysis: {
-    total_savings: number;
-    breakdown: {
-      labor: {
-        impact: number;
-        percentage: number;
-        avg_hours_over: number;
-        driver: string;
-      };
-      material: {
-        impact: number;
-        percentage: number;
-        avg_cost_over: number;
-        driver: string;
-      };
-      quality: {
-        impact: number;
-        percentage: number;
-        issue_count: number;
-        driver: string;
-      };
-    };
-    primary_driver: string;
-    consistency_score: number;
-    consistency_driver: string;
   };
 }
 
@@ -157,37 +112,76 @@ interface MLCostAnalysisData {
   message?: string;
 }
 
-interface Pattern {
-  type: string;
-  identifier: string;
-  order_count: number;
-  total_impact: number;
-  avg_variance?: number;
-  issue_rate?: number;
-  defect_rate?: number;
-  work_orders?: string[];
-}
+// Helper function to format pattern narratives for display
+function formatPatternNarrative(narrative: PatternNarrative): string {
+  let formatted = "";
 
-interface MLEquipmentData {
-  insights: EquipmentPrediction[]; // Changed from predictions to insights
-  patterns?: Pattern[];
-  total_impact: number; // Changed from total_downtime_cost to total_impact
-  message?: string;
-}
+  // Summary section
+  formatted += "PATTERN DETECTED:\n";
+  formatted += `• ${narrative.summary.orders_affected} work orders affected over ${narrative.summary.timespan_days} days\n`;
+  formatted += `• $${narrative.financial_impact.direct_overage.toLocaleString()} total variance`;
 
-interface MLQualityData {
-  insights: QualityIssue[];
-  patterns?: Pattern[];
-  overall_scrap_rate: number;
-  total_scrap_cost?: number;
-  total_impact?: number;
-}
+  if (narrative.summary.avg_variance_per_order) {
+    formatted += ` ($${narrative.summary.avg_variance_per_order.toLocaleString()} avg per order)`;
+  }
+  formatted += "\n";
 
-interface MLEfficiencyData {
-  insights: EfficiencyInsight[];
-  overall_efficiency: number;
-  total_savings_opportunity: number;
-  total_impact?: number;
+  if (narrative.summary.variance_percentage) {
+    formatted += `• ${narrative.summary.variance_percentage}% over planned cost\n`;
+  }
+
+  // Root cause section
+  formatted += "\nROOT CAUSE ANALYSIS:\n";
+  formatted += `Primary driver: ${narrative.root_cause.primary_driver}\n`;
+  if (narrative.root_cause.contributing_factors.length > 0) {
+    formatted += `Contributing factors: ${narrative.root_cause.contributing_factors.join(
+      ", "
+    )}\n`;
+  }
+
+  // Financial impact section
+  formatted += "\nCOST BREAKDOWN:\n";
+  formatted += `Direct overage: $${narrative.financial_impact.direct_overage.toLocaleString()}\n`;
+  formatted += `Pattern scope: ${narrative.financial_impact.pattern_scope}\n`;
+
+  // Recommended actions section
+  if (narrative.recommended_actions.length > 0) {
+    formatted += "\nRECOMMENDED ACTIONS:\n";
+    narrative.recommended_actions.forEach((action, idx) => {
+      formatted += `${idx + 1}. ${action.title}\n`;
+      formatted += `   ${action.description}\n`;
+      if (
+        action.estimated_monthly_savings &&
+        action.estimated_monthly_savings > 0
+      ) {
+        formatted += `   Expected savings: $${action.estimated_monthly_savings.toLocaleString()}/month\n`;
+      }
+      formatted += `   Effort: ${action.effort} | Timeframe: ${action.timeframe}\n`;
+      if (idx < narrative.recommended_actions.length - 1) {
+        formatted += "\n";
+      }
+    });
+  }
+
+  // Data gaps section
+  if (narrative.data_gaps.length > 0) {
+    formatted += "\nDATA GAPS IDENTIFIED:\n";
+    narrative.data_gaps.forEach((gap) => {
+      formatted += `⚠ ${gap.field.toUpperCase()}: ${gap.description}\n`;
+    });
+  }
+
+  // Improvement nudges section
+  if (narrative.improvement_nudges.length > 0) {
+    formatted += "\nIMPROVE YOUR DATA:\n";
+    narrative.improvement_nudges.forEach((nudge) => {
+      formatted += `→ ${nudge.message}\n`;
+      formatted += `  Value: ${nudge.estimated_value}\n`;
+      formatted += `  How: ${nudge.implementation}\n\n`;
+    });
+  }
+
+  return formatted;
 }
 
 export function formatCostAnalysisResponse(
@@ -336,7 +330,7 @@ export function formatCostAnalysisResponse(
     });
   }
 
-  // Add patterns section if patterns exist
+  // ENHANCED: Pattern sections with rich narratives
   if (mlData.patterns && mlData.patterns.length > 0) {
     const materialPatterns = mlData.patterns.filter(
       (p) => p.type === "material"
@@ -348,38 +342,60 @@ export function formatCostAnalysisResponse(
     if (materialPatterns.length > 0) {
       sections.push({
         severity: "warning" as const,
-        label: `Material Patterns (${materialPatterns.length} found)`,
+        label: `Material Patterns`,
         count: materialPatterns.length,
-        items: materialPatterns.map((p) => ({
-          id: `${p.identifier} (${p.order_count} orders)`,
-          amount: Math.abs(p.total_impact),
-          confidence: 0,
-          breakdown: undefined,
-        })),
-        actions: [
-          `Review ${materialPatterns[0].identifier} - appears in ${materialPatterns[0].order_count} orders`,
-          "Investigate material pricing changes",
-          "Check quality from this material batch",
-        ],
+        items: materialPatterns.map((p) => {
+          console.log(
+            "Pattern:",
+            p.identifier,
+            "Has narrative:",
+            !!p.narrative
+          ); // DEBUG
+          return {
+            id: `${p.identifier} (${p.order_count} orders)`,
+            amount: Math.abs(p.total_impact),
+            confidence: 0,
+            breakdown: undefined,
+            narrative: p.narrative
+              ? formatPatternNarrative(p.narrative)
+              : undefined,
+          };
+        }),
+        actions: materialPatterns[0]?.narrative
+          ? materialPatterns[0].narrative.recommended_actions
+              .slice(0, 3)
+              .map((action) => action.title)
+          : [
+              `Review ${materialPatterns[0].identifier}`,
+              "Investigate material pricing changes",
+              "Check quality from this material batch",
+            ],
       });
     }
 
     if (supplierPatterns.length > 0) {
       sections.push({
         severity: "warning" as const,
-        label: `Supplier Patterns (${supplierPatterns.length} found)`,
+        label: `Supplier Patterns`,
         count: supplierPatterns.length,
         items: supplierPatterns.map((p) => ({
           id: `${p.identifier} (${p.order_count} orders)`,
           amount: Math.abs(p.total_impact),
           confidence: 0,
           breakdown: undefined,
+          narrative: p.narrative
+            ? formatPatternNarrative(p.narrative)
+            : undefined,
         })),
-        actions: [
-          `${supplierPatterns[0].identifier} materials in ${supplierPatterns[0].order_count} orders`,
-          "Schedule supplier review meeting",
-          "Evaluate alternate suppliers",
-        ],
+        actions: supplierPatterns[0]?.narrative
+          ? supplierPatterns[0].narrative.recommended_actions
+              .slice(0, 3)
+              .map((action) => action.title)
+          : [
+              `Review ${supplierPatterns[0].identifier}`,
+              "Schedule supplier review meeting",
+              "Evaluate alternate suppliers",
+            ],
       });
     }
   }
@@ -393,7 +409,6 @@ export function formatCostAnalysisResponse(
   }
   summaryText += ".";
 
-  // Add pattern summary
   if (mlData.patterns && mlData.patterns.length > 0) {
     summaryText += `\n\nFound ${mlData.patterns.length} pattern${
       mlData.patterns.length === 1 ? "" : "s"
@@ -431,6 +446,46 @@ export function formatCostAnalysisResponse(
   };
 }
 
+// Equipment Response Formatter
+interface EquipmentPrediction {
+  equipment_id: string;
+  failure_probability: number;
+  estimated_downtime_cost: number;
+  orders_analyzed: number;
+  analysis: {
+    total_impact: number;
+    risk_score: number;
+    breakdown: {
+      labor: {
+        impact: number;
+        percentage: number;
+        avg_hours_over: number;
+        driver: string;
+      };
+      quality: {
+        impact: number;
+        percentage: number;
+        scrap_units: number;
+        affected_orders: number;
+        driver: string;
+      };
+      material_waste: {
+        impact: number;
+        percentage: number;
+        driver: string;
+      };
+    };
+    primary_issue: string;
+  };
+}
+
+interface MLEquipmentData {
+  insights: EquipmentPrediction[];
+  patterns?: Pattern[];
+  total_impact: number;
+  message?: string;
+}
+
 export function formatEquipmentResponse(
   mlData: MLEquipmentData
 ): AssistantMessage {
@@ -446,12 +501,21 @@ export function formatEquipmentResponse(
 
   if (!mlData.insights || mlData.insights.length === 0) {
     return {
-      text: "Your equipment is performing well - no assets showing failure risk patterns right now.",
-      followUps: ["Check quality issues", "Show me cost variances"],
+      text: `✓ **Equipment Status: Healthy**
+  
+  - No equipment showing failure risk patterns
+  - All assets performing within normal parameters
+  - Continue monitoring for early warning signs
+  
+  **Enhance Analysis:** Upload data with machine_id and downtime_minutes fields for predictive maintenance insights.`,
+      followUps: [
+        "What data improves equipment analysis?",
+        "Check cost variances",
+        "Review quality status",
+      ],
     };
   }
 
-  // Build sections based on risk score
   const critical = mlData.insights.filter((p) => p.failure_probability >= 80);
   const high = mlData.insights.filter(
     (p) => p.failure_probability >= 60 && p.failure_probability < 80
@@ -527,11 +591,10 @@ export function formatEquipmentResponse(
     });
   }
 
-  // Add patterns section for equipment
   if (mlData.patterns && mlData.patterns.length > 0) {
     sections.push({
       severity: "warning" as const,
-      label: `Equipment Quality Patterns (${mlData.patterns.length} found)`,
+      label: `Equipment Quality Patterns`,
       count: mlData.patterns.length,
       items: mlData.patterns.map((p) => ({
         id: `${p.identifier} (${p.order_count} quality issues)`,
@@ -555,7 +618,7 @@ export function formatEquipmentResponse(
   } showing failure risk patterns`;
 
   if (mlData.total_impact > 0) {
-    summaryText += `, with total cost exposure of $${mlData.total_impact.toLocaleString()}`;
+    summaryText += `, with total cost exposure of ${mlData.total_impact.toLocaleString()}`;
   }
   summaryText += ".";
 
@@ -584,18 +647,67 @@ export function formatEquipmentResponse(
   };
 }
 
+// Quality Response Formatter
+interface QualityIssue {
+  material_code: string;
+  scrap_rate_per_order: number;
+  quality_issue_rate: number;
+  estimated_cost_impact: number;
+  orders_analyzed: number;
+  analysis: {
+    total_impact: number;
+    issue_rate: number;
+    scrap_per_order: number;
+    breakdown: {
+      scrap: {
+        cost: number;
+        percentage: number;
+        units: number;
+        driver: string;
+      };
+      rework: {
+        cost: number;
+        percentage: number;
+        hours: number;
+        driver: string;
+      };
+      material_waste: {
+        cost: number;
+        percentage: number;
+        driver: string;
+      };
+    };
+    primary_driver: string;
+  };
+}
+
+interface MLQualityData {
+  insights: QualityIssue[];
+  patterns?: Pattern[];
+  overall_scrap_rate: number;
+  total_scrap_cost?: number;
+  total_impact?: number;
+}
+
 export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
   if (!mlData.insights || mlData.insights.length === 0) {
     const scrapRate = mlData.overall_scrap_rate || 0;
     return {
-      text: `Quality looks solid - overall scrap rate of ${scrapRate.toFixed(
-        2
-      )} units per order is within normal range.`,
-      followUps: ["Check equipment status", "Show me cost variances"],
+      text: `✓ **Quality Status: Excellent**
+  
+  - Overall scrap rate: ${scrapRate.toFixed(2)} units per order (target: <2%)
+  - No significant quality issues detected
+  - ${mlData.patterns?.length || 0} recurring defect patterns identified
+  
+  **Enhance Analysis:** Add defect_code and qc_inspection_result fields to identify specific quality improvement opportunities.`,
+      followUps: [
+        "How can I improve quality tracking?",
+        "Check equipment status",
+        "Show cost variances",
+      ],
     };
   }
 
-  // Build sections based on cost impact
   const critical = mlData.insights.filter(
     (q) => q.estimated_cost_impact > 50000
   );
@@ -675,11 +787,10 @@ export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
     });
   }
 
-  // Add patterns section for quality
   if (mlData.patterns && mlData.patterns.length > 0) {
     sections.push({
       severity: "warning" as const,
-      label: `Material Quality Patterns (${mlData.patterns.length} found)`,
+      label: `Material Quality Patterns`,
       count: mlData.patterns.length,
       items: mlData.patterns.map((p) => ({
         id: p.identifier,
@@ -706,7 +817,7 @@ export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
 
   const totalCost = mlData.total_scrap_cost || mlData.total_impact || 0;
   if (totalCost > 0) {
-    summaryText += `, totaling $${totalCost.toLocaleString()} in cost impact`;
+    summaryText += `, totaling ${totalCost.toLocaleString()} in cost impact`;
   }
   summaryText += `.`;
 
@@ -735,6 +846,49 @@ export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
   };
 }
 
+// Efficiency Response Formatter
+interface EfficiencyInsight {
+  operation_type: string;
+  efficiency_score: number;
+  labor_efficiency: number;
+  cost_efficiency: number;
+  orders_analyzed: number;
+  potential_savings: number;
+  analysis: {
+    total_savings: number;
+    breakdown: {
+      labor: {
+        impact: number;
+        percentage: number;
+        avg_hours_over: number;
+        driver: string;
+      };
+      material: {
+        impact: number;
+        percentage: number;
+        avg_cost_over: number;
+        driver: string;
+      };
+      quality: {
+        impact: number;
+        percentage: number;
+        issue_count: number;
+        driver: string;
+      };
+    };
+    primary_driver: string;
+    consistency_score: number;
+    consistency_driver: string;
+  };
+}
+
+interface MLEfficiencyData {
+  insights: EfficiencyInsight[];
+  overall_efficiency: number;
+  total_savings_opportunity: number;
+  total_impact?: number;
+}
+
 export function formatEfficiencyResponse(
   mlData: MLEfficiencyData
 ): AssistantMessage {
@@ -745,7 +899,6 @@ export function formatEfficiencyResponse(
     };
   }
 
-  // All efficiency issues are warnings (optimization opportunities)
   const sections: InsightCard["sections"] = [];
 
   const highImpact = mlData.insights.filter(
@@ -823,12 +976,18 @@ export function formatEfficiencyResponse(
     });
   }
 
-  let summaryText = `Overall efficiency: ${mlData.overall_efficiency}%. Found ${
-    mlData.insights.length
-  } optimization opportunit${mlData.insights.length === 1 ? "y" : "ies"}`;
+  let summaryText = `Overall efficiency: ${
+    mlData.overall_efficiency !== undefined
+      ? mlData.overall_efficiency.toFixed(1) + "%"
+      : mlData.insights[0]?.efficiency_score !== undefined
+      ? mlData.insights[0].efficiency_score.toFixed(1) + "%"
+      : "N/A"
+  }. Found ${mlData.insights.length} optimization opportunit${
+    mlData.insights.length === 1 ? "y" : "ies"
+  }`;
 
   if (mlData.total_savings_opportunity > 0) {
-    summaryText += ` with potential savings of $${mlData.total_savings_opportunity.toLocaleString()}`;
+    summaryText += ` with potential savings of ${mlData.total_savings_opportunity.toLocaleString()}`;
   }
   summaryText += `.`;
 

@@ -117,6 +117,17 @@ export async function POST(request: NextRequest) {
         ? await efficiencyResponse.json()
         : null;
 
+      // Extract savings opportunity from cost data
+      const totalSavingsOpportunity = costData?.total_savings_opportunity || 0;
+      console.log("=== SAVINGS DEBUG ===");
+      console.log("costData keys:", Object.keys(costData || {}));
+      console.log(
+        "costData.total_savings_opportunity:",
+        costData?.total_savings_opportunity
+      );
+      console.log("totalSavingsOpportunity variable:", totalSavingsOpportunity);
+      console.log("Cost data has patterns:", costData?.patterns?.length || 0);
+
       // Build executive summary
       const summaryParts = [];
       const allMessages = [];
@@ -181,7 +192,6 @@ export async function POST(request: NextRequest) {
       const formattedCost = costData
         ? formatCostAnalysisResponse(costData)
         : null;
-      console.log("Cost data has patterns:", costData?.patterns?.length || 0);
 
       const formattedEquipment = equipmentData
         ? formatEquipmentResponse(equipmentData)
@@ -202,6 +212,7 @@ export async function POST(request: NextRequest) {
         quality: formattedQuality,
         efficiency: formattedEfficiency,
         totalImpact,
+        totalSavingsOpportunity,
       };
 
       console.log("Auto-analysis complete:", {

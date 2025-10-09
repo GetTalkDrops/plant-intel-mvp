@@ -50,7 +50,6 @@ class EquipmentPredictor:
                 "insights": [],
                 "patterns": [],
                 "total_impact": 0,
-                "message": "No equipment data available. Upload data with machine_id field for equipment analysis."
             }
         
         unique_machines = df['machine_id'].dropna().unique()

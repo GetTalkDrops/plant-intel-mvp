@@ -150,3 +150,4 @@ export function CsvMappingModal({
     </div>
   );
 }
+export default CsvMappingModal;

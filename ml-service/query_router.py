@@ -160,10 +160,11 @@ class EnhancedQueryRouter:
             'type': 'cost_analysis',
             'message': message,
             'predictions': predictions,
-            'patterns': result.get('patterns', []),  # ADD THIS LINE
+            'patterns': result.get('patterns', []),  
             'total_impact': result.get('total_impact', 0),
             'validation': validation,
-            'thresholds': thresholds
+            'thresholds': thresholds,
+            "total_savings_opportunity": result.get("total_savings_opportunity", 0),
         }
     
     def _format_equipment_response(self, facility_id: int, query: str, batch_id: str = None) -> Dict:

@@ -375,6 +375,17 @@ export function InsightCard({ card }: InsightCardProps) {
 
                       {/* Breakdown - dynamically rendered based on type */}
                       {item.breakdown && renderBreakdown(item.breakdown)}
+                      {/* Narrative - Full Analysis */}
+                      {item.narrative && (
+                        <div className="mt-3 p-3 bg-white rounded border border-gray-200">
+                          <div className="text-xs font-semibold text-gray-700 mb-2">
+                            FULL ANALYSIS
+                          </div>
+                          <pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans">
+                            {item.narrative}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   ))}
 

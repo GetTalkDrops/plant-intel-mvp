@@ -228,10 +228,30 @@ class CostAnalyzer:
         
         total_impact = float(significant["total_variance"].sum())
         
+        # Calculate total identified savings opportunity
+        total_savings = 0
+        for pattern in all_patterns:
+            print(f"DEBUG: Checking pattern {pattern.get('identifier')}")
+            print(f"DEBUG: Has narrative: {pattern.get('narrative') is not None}")
+            if pattern.get('narrative'):
+                print(f"DEBUG: Narrative type: {pattern['narrative'].get('type')}")
+                print(f"DEBUG: Has recommended_actions: {pattern['narrative'].get('recommended_actions') is not None}")
+                if pattern['narrative'].get('recommended_actions'):
+                    actions = pattern['narrative']['recommended_actions']
+                    print(f"DEBUG: Number of actions: {len(actions)}")
+                    for action in actions:
+                        savings = action.get('estimated_monthly_savings', 0)
+                        print(f"DEBUG: Action '{action.get('title')}' has savings: ${savings}")
+                        if savings:
+                            total_savings += savings
+        
+        print(f"DEBUG: TOTAL SAVINGS CALCULATED: ${total_savings}")
+        
         return {
             "status": "success",
             "predictions": predictions,
             "patterns": all_patterns,  # Now includes rich narratives
             "total_impact": total_impact,
+            "total_savings_opportunity": total_savings,
             "message": f"Found {len(predictions)} work orders with significant cost variances and {len(all_patterns)} patterns"
         }
