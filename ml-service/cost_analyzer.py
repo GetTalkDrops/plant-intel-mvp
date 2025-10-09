@@ -20,6 +20,80 @@ class CostAnalyzer:
         self.LABOR_RATE_PER_HOUR = 200
         self.explainer = PatternExplainer(labor_rate_per_hour=self.LABOR_RATE_PER_HOUR)
 
+    def _calculate_confidence(self, row, df, all_patterns):
+        """Calculate dynamic confidence based on pattern strength and data quality"""
+        confidence = 60  # Base confidence
+        
+        # Pattern strength: more orders with same material = higher confidence
+        material_code = row.get('material_code')
+        if material_code and pd.notna(material_code):
+            pattern_size = len(df[df['material_code'] == material_code])
+            if pattern_size >= 8:
+                confidence += 20
+            elif pattern_size >= 5:
+                confidence += 15
+            elif pattern_size >= 3:
+                confidence += 10
+        
+        # Data completeness: more fields = higher confidence
+        complete_fields = sum([
+            bool(row.get('material_code')) and pd.notna(row.get('material_code')),
+            bool(row.get('supplier_id')) and pd.notna(row.get('supplier_id')),
+            row.get('planned_material_cost', 0) > 0,
+            row.get('actual_material_cost', 0) > 0,
+            row.get('planned_labor_hours', 0) > 0,
+            row.get('actual_labor_hours', 0) > 0
+        ])
+        confidence += complete_fields * 2
+        
+        # Variance magnitude: larger variance = more confident it's real
+        variance_pct = abs(row['total_variance']) / row['total_planned'] * 100 if row['total_planned'] > 0 else 0
+        if variance_pct > 30:
+            confidence += 8
+        elif variance_pct > 15:
+            confidence += 5
+        
+        return min(92, confidence) / 100  # Cap at 92%, return as decimal
+        
+    def _calculate_variance_context(self, row, df):
+        """Calculate how variance compares to historical average for this work order type"""
+        
+        # Get work order type (e.g., "PROD" from "WO-PROD-2004")
+        wo_number = str(row.get('work_order_number', ''))
+        if '-' in wo_number:
+            wo_type = wo_number.split('-')[1]
+        else:
+            return {'material': None, 'labor': None}
+        
+        # Find similar work orders (same type)
+        similar_orders = df[df['work_order_number'].str.contains(wo_type, na=False)]
+        
+        if len(similar_orders) < 5:
+            return {'material': None, 'labor': None}
+        
+        # Calculate average variances for this type
+        avg_material_var = abs(similar_orders['material_variance']).mean()
+        avg_labor_var = abs(similar_orders['labor_variance']).mean()
+        
+        # Calculate ratios
+        material_ratio = abs(row['material_variance']) / avg_material_var if avg_material_var > 0 else 1.0
+        labor_ratio = abs(row['labor_variance']) / avg_labor_var if avg_labor_var > 0 else 1.0
+        
+        def format_context(ratio):
+            if ratio > 2.5:
+                return f"{ratio:.1f}x higher than typical"
+            elif ratio > 1.5:
+                return f"{ratio:.1f}x above average"
+            elif ratio > 0.7:
+                return "within normal range"
+            else:
+                return f"{ratio:.1f}x below typical"
+        
+        return {
+            'material': format_context(material_ratio),
+            'labor': format_context(labor_ratio)
+        }
+    
     def predict_cost_variance(self, facility_id: int = 1, batch_id: Optional[str] = None) -> Dict:
         """Analyze cost variances with rich pattern narratives"""
         
@@ -187,6 +261,7 @@ class CostAnalyzer:
         all_patterns = material_patterns + supplier_patterns
         all_patterns.sort(key=lambda x: abs(x["total_impact"]), reverse=True)
         
+        
         # Build predictions for individual work orders
         predictions = []
         for _, row in significant.nlargest(20, "total_variance", keep="all").iterrows():
@@ -197,10 +272,13 @@ class CostAnalyzer:
                          "high" if abs(row["total_variance"]) > variance_threshold * 2 else \
                          "medium"
             
+             # Calculate variance context
+            variance_context = self._calculate_variance_context(row, df)
+            
             predictions.append({
                 "work_order_number": row["work_order_number"],
                 "predicted_variance": float(row["total_variance"]),
-                "confidence": 0.85,
+                "confidence": self._calculate_confidence(row, df, all_patterns),
                 "risk_level": risk_level,
                 "analysis": {
                     "variance_breakdown": {
@@ -210,7 +288,8 @@ class CostAnalyzer:
                             "variance": float(row["material_variance"]),
                             "percentage": float(material_pct),
                             "variance_pct": float(material_pct),
-                            "driver": "Material cost variance"
+                            "driver": "Material cost variance",
+                            "context": variance_context['material']  
                         },
                         "labor": {
                             "planned": float(row["labor_cost_planned"]),
@@ -219,7 +298,8 @@ class CostAnalyzer:
                             "percentage": float(labor_pct),
                             "variance_pct": float(labor_pct),
                             "hours_variance": float(row["actual_labor_hours"] - row["planned_labor_hours"]),
-                            "driver": "Labor hours variance"
+                            "driver": "Labor hours variance",
+                            "context": variance_context['labor']  # ADD THIS LINE
                         }
                     },
                     "primary_driver": "material" if material_pct > 50 else "labor"
@@ -231,21 +311,14 @@ class CostAnalyzer:
         # Calculate total identified savings opportunity
         total_savings = 0
         for pattern in all_patterns:
-            print(f"DEBUG: Checking pattern {pattern.get('identifier')}")
-            print(f"DEBUG: Has narrative: {pattern.get('narrative') is not None}")
             if pattern.get('narrative'):
-                print(f"DEBUG: Narrative type: {pattern['narrative'].get('type')}")
-                print(f"DEBUG: Has recommended_actions: {pattern['narrative'].get('recommended_actions') is not None}")
                 if pattern['narrative'].get('recommended_actions'):
                     actions = pattern['narrative']['recommended_actions']
-                    print(f"DEBUG: Number of actions: {len(actions)}")
                     for action in actions:
                         savings = action.get('estimated_monthly_savings', 0)
-                        print(f"DEBUG: Action '{action.get('title')}' has savings: ${savings}")
                         if savings:
                             total_savings += savings
         
-        print(f"DEBUG: TOTAL SAVINGS CALCULATED: ${total_savings}")
         
         return {
             "status": "success",

@@ -45,8 +45,18 @@ export function InsightCard({ card }: InsightCardProps) {
       !("primary_issue" in breakdown)
     ) {
       const bd = breakdown as {
-        material?: { variance?: number; percentage?: number; driver?: string };
-        labor?: { variance?: number; percentage?: number; driver?: string };
+        material?: {
+          variance?: number;
+          percentage?: number;
+          driver?: string;
+          context?: string;
+        };
+        labor?: {
+          variance?: number;
+          percentage?: number;
+          driver?: string;
+          context?: string;
+        };
         primary_driver?: string;
       };
 
@@ -80,6 +90,11 @@ export function InsightCard({ card }: InsightCardProps) {
               </span>
             </div>
           )}
+          {bd.material?.context && (
+            <div className="text-xs text-gray-500 ml-6">
+              {bd.material.context}
+            </div>
+          )}
           {bd.labor?.variance !== undefined && (
             <div className="flex justify-between items-center">
               <span className="text-gray-600">
@@ -99,6 +114,9 @@ export function InsightCard({ card }: InsightCardProps) {
                 )}
               </span>
             </div>
+          )}
+          {bd.labor?.context && (
+            <div className="text-xs text-gray-500 ml-6">{bd.labor.context}</div>
           )}
           {bd.primary_driver && (
             <div className="mt-1 pt-1 border-t border-gray-100">
@@ -355,19 +373,18 @@ export function InsightCard({ card }: InsightCardProps) {
                           {item.id}
                         </span>
                         <span className="text-gray-700 font-semibold">
-                          ${item.amount.toLocaleString()}
                           {item.confidence !== undefined &&
                           item.confidence > 0 ? (
-                            <span className="text-gray-500 ml-1">
-                              ({item.confidence.toFixed(1)}
+                            <span className="text-gray-500 ml-1 text-xs">
                               {card.category === "cost"
-                                ? "% confidence"
+                                ? `Confidence: ${(
+                                    item.confidence * 100
+                                  ).toFixed(0)}%`
                                 : card.category === "equipment"
-                                ? "% risk"
+                                ? `${item.confidence.toFixed(0)}% risk`
                                 : card.category === "quality"
-                                ? "% issue rate"
-                                : "% efficiency"}
-                              )
+                                ? `${item.confidence.toFixed(0)}% issue rate`
+                                : `${item.confidence.toFixed(0)}% efficiency`}
                             </span>
                           ) : null}
                         </span>

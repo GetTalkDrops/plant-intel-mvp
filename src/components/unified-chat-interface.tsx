@@ -418,15 +418,7 @@ You can try uploading again or contact support if the issue persists.`,
 
       if (uploadResponse.ok && uploadResult.success) {
         console.log("Upload successful:", uploadResult);
-        console.log("Cost cards:", uploadResult.autoAnalysis?.cost?.cards);
-        console.log(
-          "First card sections:",
-          uploadResult.autoAnalysis?.cost?.cards?.[0]?.sections
-        );
-        console.log(
-          "First section items:",
-          uploadResult.autoAnalysis?.cost?.cards?.[0]?.sections?.[0]?.items
-        );
+
         const successMessage: ChatMessage = {
           id: "storage-success-" + Date.now().toString(),
           message: `✅ Successfully imported ${uploadResult.recordsInserted} work orders from ${pendingData.fileName}`,

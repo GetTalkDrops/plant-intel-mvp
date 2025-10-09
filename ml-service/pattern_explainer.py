@@ -41,7 +41,7 @@ class PatternExplainer:
         # Identify data gaps
         data_gaps = self._identify_material_data_gaps(work_orders)
         
-        # Generate specific actions
+       # Generate and prioritize actions (sorting happens inside)
         actions = self._generate_material_actions(
             material_code,
             total_variance,
@@ -50,15 +50,6 @@ class PatternExplainer:
             variance_pct,
             data_gaps
         )
-        
-        # Calculate ROI for each action
-        for action in actions:
-            action['estimated_monthly_savings'] = self._calculate_action_roi(
-                action['type'],
-                avg_variance,
-                orders_affected,
-                all_orders_df
-            )
         
         return {
             'type': 'material_pattern',
@@ -124,6 +115,7 @@ class PatternExplainer:
             materials_affected,
             data_gaps
         )
+        
         
         return {
             'type': 'supplier_pattern',
@@ -529,6 +521,26 @@ class PatternExplainer:
             'timeframe': '1 week'
         })
         
+         # Calculate ROI scores and sort BEFORE returning
+        effort_weights = {'low': 1.0, 'medium': 0.5, 'high': 0.25}
+        for action in actions:
+            # Calculate estimated savings based on action type
+            monthly_orders = orders_affected * 4
+            if action['type'] == 'negotiate':
+                savings = abs(avg_variance) * monthly_orders * 0.5
+            elif action['type'] == 'alternate_supplier':
+                savings = abs(avg_variance) * monthly_orders * 0.6
+            elif action['type'] == 'lock_pricing':
+                savings = abs(avg_variance) * monthly_orders * 0.45
+            else:
+                savings = 0
+            
+            action['estimated_monthly_savings'] = savings
+            action['roi_score'] = (savings / 10000) * effort_weights[action['effort']]
+        
+        # Sort by ROI score descending
+        actions.sort(key=lambda x: x.get('roi_score', 0), reverse=True)
+        
         return actions
     
     def _generate_supplier_actions(
@@ -562,7 +574,28 @@ class PatternExplainer:
             'timeframe': '1-3 months'
         })
         
+         # Calculate ROI scores and sort BEFORE returning
+        effort_weights = {'low': 1.0, 'medium': 0.5, 'high': 0.25}
+        for action in actions:
+            # Supplier actions don't have specific savings estimates
+            # Use a simple heuristic based on total variance
+            monthly_orders = orders_affected * 4
+            
+            if action['type'] == 'supplier_review':
+                savings = abs(avg_variance) * monthly_orders * 0.4
+            elif action['type'] == 'dual_source':
+                savings = abs(avg_variance) * monthly_orders * 0.6
+            else:
+                savings = 0
+            
+            action['estimated_monthly_savings'] = savings
+            action['roi_score'] = (savings / 10000) * effort_weights[action['effort']]
+        
+        # Sort by ROI score descending
+        actions.sort(key=lambda x: x.get('roi_score', 0), reverse=True)
+        
         return actions
+        
     
     def _generate_equipment_actions(
         self,
@@ -594,6 +627,14 @@ class PatternExplainer:
             'effort': 'medium',
             'timeframe': '1-2 weeks'
         })
+        # Calculate ROI scores and sort
+        effort_weights = {'low': 1.0, 'medium': 0.5, 'high': 0.25}
+        for action in actions:
+            savings = action.get('estimated_monthly_savings', 0)
+            effort = action.get('effort', 'medium') 
+            action['roi_score'] = (savings / 10000) * effort_weights[effort]
+        
+        actions.sort(key=lambda x: x.get('roi_score', 0), reverse=True)
         
         return actions
     
@@ -627,6 +668,15 @@ class PatternExplainer:
             'effort': 'medium',
             'timeframe': '1-2 weeks'
         })
+        
+        # Calculate ROI scores and sort
+        effort_weights = {'low': 1.0, 'medium': 0.5, 'high': 0.25}
+        for action in actions:
+            savings = action.get('estimated_monthly_savings', 0)
+            effort = action.get('effort', 'medium')
+            action['roi_score'] = (savings / 10000) * effort_weights[effort]
+        
+        actions.sort(key=lambda x: x.get('roi_score', 0), reverse=True)
         
         return actions
     
