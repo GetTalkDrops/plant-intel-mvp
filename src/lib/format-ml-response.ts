@@ -490,24 +490,62 @@ export function formatEquipmentResponse(
   mlData: MLEquipmentData
 ): AssistantMessage {
   if (mlData.message) {
+    // Still create card even when ML service returns a message
+    const emptyCard: InsightCard = {
+      type: "warning",
+      category: "equipment",
+      title: "Equipment Status: Healthy",
+      impact: 0,
+      sections: [
+        {
+          severity: "warning" as const,
+          label: "Status",
+          count: 0,
+          items: [],
+          actions: [
+            "No equipment showing failure risk patterns",
+            "All assets performing within normal parameters",
+            "Continue monitoring for early warning signs",
+          ],
+        },
+      ],
+    };
+
     return {
       text: mlData.message,
+      cards: [emptyCard],
       followUps: [
         "What data do I need for equipment analysis?",
         "Show me cost variances instead",
       ],
     };
   }
-
   if (!mlData.insights || mlData.insights.length === 0) {
+    const emptyCard: InsightCard = {
+      type: "warning",
+      category: "equipment",
+      title: "Equipment Status: Healthy",
+      impact: 0,
+      sections: [
+        {
+          severity: "warning" as const,
+          label: "Status",
+          count: 0,
+          items: [],
+          actions: [
+            "No equipment showing failure risk patterns",
+            "All assets performing within normal parameters",
+            "Continue monitoring for early warning signs",
+          ],
+        },
+      ],
+    };
+
     return {
-      text: `✓ **Equipment Status: Healthy**
-  
-  - No equipment showing failure risk patterns
-  - All assets performing within normal parameters
-  - Continue monitoring for early warning signs
-  
-  **Enhance Analysis:** Upload data with machine_id and downtime_minutes fields for predictive maintenance insights.`,
+      text: `Equipment health looks good. No assets showing failure risk patterns.
+
+**Enhance Analysis:** Upload data with machine_id and downtime_minutes fields for predictive maintenance insights.`,
+      cards: [emptyCard],
       followUps: [
         "What data improves equipment analysis?",
         "Check cost variances",
@@ -692,14 +730,38 @@ interface MLQualityData {
 export function formatQualityResponse(mlData: MLQualityData): AssistantMessage {
   if (!mlData.insights || mlData.insights.length === 0) {
     const scrapRate = mlData.overall_scrap_rate || 0;
+
+    const emptyCard: InsightCard = {
+      type: "warning",
+      category: "quality",
+      title: "Quality Status: Excellent",
+      impact: 0,
+      sections: [
+        {
+          severity: "warning" as const,
+          label: "Status",
+          count: 0,
+          items: [],
+          actions: [
+            `Overall scrap rate: ${scrapRate.toFixed(
+              2
+            )} units per order (target: <2%)`,
+            "No significant quality issues detected",
+            `${
+              mlData.patterns?.length || 0
+            } recurring defect patterns identified`,
+          ],
+        },
+      ],
+    };
+
     return {
-      text: `✓ **Quality Status: Excellent**
-  
-  - Overall scrap rate: ${scrapRate.toFixed(2)} units per order (target: <2%)
-  - No significant quality issues detected
-  - ${mlData.patterns?.length || 0} recurring defect patterns identified
-  
-  **Enhance Analysis:** Add defect_code and qc_inspection_result fields to identify specific quality improvement opportunities.`,
+      text: `Quality metrics look strong. Overall scrap rate of ${scrapRate.toFixed(
+        2
+      )} units per order is within target range.
+
+**Enhance Analysis:** Add defect_code and qc_inspection_result fields to identify specific quality improvement opportunities.`,
+      cards: [emptyCard],
       followUps: [
         "How can I improve quality tracking?",
         "Check equipment status",

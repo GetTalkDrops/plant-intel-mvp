@@ -14,77 +14,9 @@ import {
 import { processFileUpload, type ColumnMapping } from "@/lib/csvMapper";
 import { useAuth } from "@/contexts/AuthContext";
 import { InsightCard } from "@/lib/insight-types";
-
-function SavingsTracker({
-  savings,
-  onDismiss,
-}: {
-  savings: number;
-  onDismiss: () => void;
-}) {
-  const percentOfGoal = Math.min((savings / 50000) * 100, 100);
-
-  return (
-    <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-lg relative">
-      {/* Dismiss button */}
-      <button
-        onClick={onDismiss}
-        className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 transition-colors"
-        aria-label="Dismiss savings tracker"
-      >
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M6 18L18 6M6 6l12 12"
-          />
-        </svg>
-      </button>
-
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <div className="text-sm text-gray-600 font-medium">
-            Identified Savings Opportunity
-          </div>
-          <div className="text-2xl font-bold text-green-700">
-            ${savings.toLocaleString()}
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-sm text-gray-600">ROI Guarantee Progress</div>
-          <div className="text-lg font-bold text-blue-600">
-            {percentOfGoal.toFixed(0)}% of $50K
-          </div>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="w-full bg-gray-200 rounded-full h-2">
-        <div
-          className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all duration-500"
-          style={{ width: `${percentOfGoal}%` }}
-        />
-      </div>
-
-      {percentOfGoal >= 100 && (
-        <div className="mt-2 text-sm text-green-700 font-medium">
-          ✓ Guarantee threshold exceeded!
-        </div>
-      )}
-
-      {/* Pilot indicator */}
-      <div className="mt-2 text-xs text-gray-500 italic">
-        30-day pilot • Tracking identified opportunities
-      </div>
-    </div>
-  );
-}
+import { SavingsTracker } from "./savings-tracker";
+import { useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 type ChatMessage = {
   id: string;
@@ -114,6 +46,36 @@ interface PendingMapping {
   fileHash?: string;
 }
 
+type SavedMessage = {
+  id: number;
+  session_id: number;
+  role: string;
+  content: string;
+  metadata: {
+    cost?: {
+      text: string;
+      cards?: InsightCard[];
+      followUps?: string[];
+    };
+    equipment?: {
+      text: string;
+      cards?: InsightCard[];
+      followUps?: string[];
+    };
+    quality?: {
+      text: string;
+      cards?: InsightCard[];
+      followUps?: string[];
+    };
+    efficiency?: {
+      text: string;
+      cards?: InsightCard[];
+      followUps?: string[];
+    };
+  } | null;
+  created_at: string;
+};
+
 export function UnifiedChatInterface() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -125,6 +87,15 @@ export function UnifiedChatInterface() {
   );
   const [cumulativeSavings, setCumulativeSavings] = useState(0);
   const [savingsTrackerDismissed, setSavingsTrackerDismissed] = useState(false);
+  const searchParams = useSearchParams();
+  const sessionParam = searchParams.get("session");
+
+  // Stabilize sessionParam to prevent excessive re-renders
+  const [stableSessionId, setStableSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStableSessionId(sessionParam);
+  }, [sessionParam]);
 
   // Landing page state
   const [landingChatInput, setLandingChatInput] = useState("");
@@ -140,6 +111,164 @@ export function UnifiedChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Load saved session on mount
+  useEffect(() => {
+    if (!user?.email) return;
+
+    const loadSession = async () => {
+      console.log("🔄 Loading session for user:", user.email);
+      console.log("📍 Session param from URL:", sessionParam);
+
+      // If no session param, clear messages and show landing page
+      if (!stableSessionId) {
+        console.log("🆕 No session param - clearing messages for new chat");
+        setMessages([]);
+        setCumulativeSavings(0);
+        return;
+      }
+
+      try {
+        // Check for session ID in URL
+        const sessionId = stableSessionId;
+
+        let sessions;
+        if (sessionId) {
+          // Load specific session from URL
+          const { data } = await supabase
+            .from("chat_sessions")
+            .select("*")
+            .eq("id", parseInt(sessionId))
+            .eq("user_id", user.email)
+            .limit(1);
+          sessions = data;
+        } else {
+          // No session in URL = show empty landing page
+          return;
+        }
+
+        if (!sessions || sessions.length === 0) return;
+
+        const session = sessions[0];
+        console.log("📊 Found sessions:", sessions?.length || 0);
+        // Load messages for this session
+        const { data: savedMessages } = await supabase
+          .from("chat_messages")
+          .select("*")
+          .eq("session_id", session.id)
+          .order("created_at", { ascending: true });
+        console.log("💬 Found messages:", savedMessages?.length || 0);
+        console.log("📨 Message data:", savedMessages);
+        if (savedMessages && savedMessages.length > 0) {
+          const loadedMessages: ChatMessage[] = [];
+
+          savedMessages.forEach((msg: SavedMessage) => {
+            if (msg.role === "user") {
+              // User messages - add as-is
+              loadedMessages.push({
+                id: msg.id.toString(),
+                message: msg.content,
+                isUser: true,
+                timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              });
+            } else if (msg.metadata) {
+              // Assistant message with metadata - split into separate messages
+              // Executive summary
+              loadedMessages.push({
+                id: msg.id.toString() + "-summary",
+                message: msg.content,
+                isUser: false,
+                timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              });
+
+              // Cost analysis
+              if (msg.metadata.cost?.cards) {
+                loadedMessages.push({
+                  id: msg.id.toString() + "-cost",
+                  message: msg.metadata.cost.text,
+                  isUser: false,
+                  timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  cards: msg.metadata.cost.cards,
+                  followUps: msg.metadata.cost.followUps,
+                });
+              }
+
+              // Equipment analysis
+              if (msg.metadata.equipment) {
+                loadedMessages.push({
+                  id: msg.id.toString() + "-equipment",
+                  message: msg.metadata.equipment.text,
+                  isUser: false,
+                  timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  cards: msg.metadata.equipment.cards,
+                  followUps: msg.metadata.equipment.followUps,
+                });
+              }
+
+              // Quality analysis
+              if (msg.metadata.quality) {
+                loadedMessages.push({
+                  id: msg.id.toString() + "-quality",
+                  message: msg.metadata.quality.text,
+                  isUser: false,
+                  timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  cards: msg.metadata.quality.cards,
+                  followUps: msg.metadata.quality.followUps,
+                });
+              }
+
+              // Efficiency analysis
+              if (msg.metadata.efficiency) {
+                loadedMessages.push({
+                  id: msg.id.toString() + "-efficiency",
+                  message: msg.metadata.efficiency.text,
+                  isUser: false,
+                  timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  cards: msg.metadata.efficiency.cards,
+                  followUps: msg.metadata.efficiency.followUps,
+                });
+              }
+            } else {
+              // Plain assistant message without metadata
+              loadedMessages.push({
+                id: msg.id.toString(),
+                message: msg.content,
+                isUser: false,
+                timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              });
+            }
+          });
+
+          setMessages(loadedMessages);
+          setCumulativeSavings(session.total_savings || 0);
+        }
+      } catch (error) {
+        console.error("Failed to load session:", error);
+      }
+    };
+
+    loadSession();
+  }, [user?.email, stableSessionId]);
   const handleSendMessage = async (message: string) => {
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -421,7 +550,7 @@ You can try uploading again or contact support if the issue persists.`,
 
         const successMessage: ChatMessage = {
           id: "storage-success-" + Date.now().toString(),
-          message: `✅ Successfully imported ${uploadResult.recordsInserted} work orders from ${pendingData.fileName}`,
+          message: `Successfully imported ${uploadResult.recordsInserted} work orders from ${pendingData.fileName}`,
           isUser: false,
           timestamp: new Date().toLocaleTimeString([], {
             hour: "2-digit",

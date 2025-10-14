@@ -224,6 +224,100 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    // Create data upload record and chat session
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    // Create data_uploads record
+    const { data: uploadRecord, error: uploadError } = await supabase
+      .from("data_uploads")
+      .insert({
+        user_id: userEmail,
+        filename: fileName,
+        status: "completed",
+        field_mappings: mapping,
+        record_count: result.recordsInserted,
+        batch_id: result.batchId,
+      })
+      .select()
+      .single();
+
+    if (uploadError) {
+      console.error("Failed to create upload record:", uploadError);
+    }
+
+    // Check for existing session with same filename
+    const { data: existingSessions } = await supabase
+      .from("chat_sessions")
+      .select("*")
+      .eq("user_id", userEmail)
+      .eq("title", fileName)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    let sessionRecord;
+
+    if (existingSessions && existingSessions.length > 0) {
+      // Update existing session
+      const { data: updated, error: updateError } = await supabase
+        .from("chat_sessions")
+        .update({
+          upload_id: uploadRecord?.id,
+          total_savings: autoAnalysis?.totalSavingsOpportunity || 0,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingSessions[0].id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error("Failed to update session:", updateError);
+      }
+      sessionRecord = updated;
+    } else {
+      // Create new session
+      const { data: newSession, error: sessionError } = await supabase
+        .from("chat_sessions")
+        .insert({
+          user_id: userEmail,
+          title: fileName,
+          upload_id: uploadRecord?.id,
+          total_savings: autoAnalysis?.totalSavingsOpportunity || 0,
+        })
+        .select()
+        .single();
+
+      if (sessionError) {
+        console.error("Failed to create session:", sessionError);
+      }
+      sessionRecord = newSession;
+    }
+    // Save initial messages
+    if (sessionRecord && autoAnalysis) {
+      const messages = [
+        {
+          session_id: sessionRecord.id,
+          role: "user",
+          content: `Analyzing uploaded data: ${fileName}`,
+        },
+        {
+          session_id: sessionRecord.id,
+          role: "assistant",
+          content: autoAnalysis.executiveSummary,
+          metadata: {
+            cost: autoAnalysis.cost,
+            equipment: autoAnalysis.equipment,
+            quality: autoAnalysis.quality,
+            efficiency: autoAnalysis.efficiency,
+          },
+        },
+      ];
+
+      await supabase.from("chat_messages").insert(messages);
+    }
     return NextResponse.json({
       success: true,
       message: `Successfully processed ${result.recordsInserted} work orders`,

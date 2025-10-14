@@ -3,6 +3,18 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+
+type ChatSession = {
+  id: number;
+  user_id: string;
+  title: string;
+  upload_id: number | null;
+  total_savings: number;
+  created_at: string;
+  updated_at: string;
+};
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -15,10 +27,40 @@ export function AppLayout({
   onNewChat,
   isLandingPage = false,
 }: AppLayoutProps) {
+  const router = useRouter();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlant, setSelectedPlant] = useState("demo_plant");
   const { user, signOut, loading } = useAuth();
+  // Initialize from localStorage if available
+  const [recentSessions, setRecentSessions] = useState<ChatSession[]>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("recent_sessions");
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
+
+  // Persist to localStorage whenever sessions change
+  useEffect(() => {
+    if (recentSessions.length > 0) {
+      localStorage.setItem("recent_sessions", JSON.stringify(recentSessions));
+    }
+  }, [recentSessions]);
+
+  // Clear sessions from localStorage when user logs out
+  useEffect(() => {
+    if (!user && !loading) {
+      localStorage.removeItem("recent_sessions");
+      setRecentSessions([]);
+    }
+  }, [user, loading]);
 
   // Debug auth state changes
   useEffect(() => {
@@ -45,13 +87,62 @@ export function AppLayout({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
+  // Load recent sessions for sidebar - persistent across navigation
+  useEffect(() => {
+    console.log("🔍 Session loading effect triggered:", {
+      hasUser: !!user?.email,
+      userEmail: user?.email,
+      loading,
+      currentSessionsCount: recentSessions.length,
+    });
+
+    if (!user?.email) {
+      console.log("⚠️ No user email, keeping existing sessions");
+      return; // CRITICAL: Don't touch recentSessions state at all
+    }
+
+    // Only load if we don't have sessions yet OR user changed
+    if (recentSessions.length > 0 && recentSessions[0].user_id === user.email) {
+      console.log("✅ Sessions already loaded for this user");
+      return;
+    }
+
+    const loadSessions = async () => {
+      console.log("📥 Loading sessions for", user.email);
+      try {
+        const { data: sessions } = await supabase
+          .from("chat_sessions")
+          .select("*")
+          .eq("user_id", user.email)
+          .order("updated_at", { ascending: false })
+          .limit(10);
+
+        console.log("✅ Loaded sessions:", sessions?.length);
+        if (sessions && sessions.length > 0) {
+          setRecentSessions(sessions);
+        }
+      } catch (error) {
+        console.error("❌ Failed to load sessions:", error);
+      }
+    };
+
+    loadSessions();
+  }, [user?.email]);
+
+  // Debug recent sessions
+  useEffect(() => {
+    console.log(
+      "🎨 Recent sessions state updated:",
+      recentSessions.length,
+      recentSessions
+    );
+  }, [recentSessions]);
+
   const handleUserProfileClick = () => {
     if (user) {
-      // Go to profile page instead of signing out immediately
-      window.location.href = "/profile";
+      router.push("/profile");
     } else {
-      // Go to login page
-      window.location.href = "/login";
+      router.push("/login");
     }
   };
 
@@ -320,11 +411,25 @@ export function AppLayout({
               <div className="space-y-1">
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-sm h-9 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                  onClick={handleChatClick}
+                  className="w-full justify-start text-sm h-9 text-gray-600 hover:bg-gray-100"
+                  onClick={() => router.push("/")}
                 >
-                  Chat
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  New Chat
                 </Button>
+
                 <Button
                   variant="ghost"
                   className="w-full justify-start text-sm h-9 text-gray-600"
@@ -352,35 +457,31 @@ export function AppLayout({
                 Recent Data
               </h3>
 
-              {!isLandingPage && user ? (
-                <>
-                  <div className="space-y-2">
-                    <div className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded">
-                      Production Data - Sep 18, 2:14 PM
+              {recentSessions.length > 0 ? (
+                <div className="space-y-2">
+                  {recentSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded"
+                      onClick={() => router.push(`/?session=${session.id}`)}
+                    >
+                      {session.title} -{" "}
+                      {new Date(session.updated_at).toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
                     </div>
-                    <div className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded">
-                      Quality Report - Sep 18, 9:30 AM
-                    </div>
-                  </div>
-
-                  <div className="mt-6 text-center">
-                    <p className="text-xs text-gray-400 mb-2">
-                      No recent uploads
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Upload data to get started
-                    </p>
-                  </div>
-                </>
+                  ))}
+                </div>
               ) : (
                 <div className="text-center">
                   <p className="text-xs text-gray-400 mb-2">
-                    {user ? "No recent uploads" : "Demo data available"}
+                    No recent uploads
                   </p>
                   <p className="text-xs text-gray-400">
-                    {user
-                      ? "Upload data to get started"
-                      : "Sign in to save your data"}
+                    Upload data to get started
                   </p>
                 </div>
               )}

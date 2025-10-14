@@ -91,25 +91,6 @@ export function MessageBubble({
               ))}
             </div>
           )}
-
-          {/* Follow-up suggestions */}
-          {followUps && followUps.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-gray-200">
-              <div className="text-sm text-gray-600 mb-2">
-                Would you like me to:
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {followUps.map((followUp, idx) => (
-                  <button
-                    key={idx}
-                    className="text-sm px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-left"
-                  >
-                    {followUp}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

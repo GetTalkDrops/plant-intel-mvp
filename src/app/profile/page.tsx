@@ -21,21 +21,19 @@ export default function ProfilePage() {
     try {
       console.log("Profile page: Starting sign out...");
 
-      // Force sign out directly with Supabase
+      // Sign out with Supabase
       const { error } = await supabase.auth.signOut();
 
       if (error) {
         console.error("Sign out error:", error);
-      } else {
-        console.log("Profile page: Signed out successfully");
       }
 
-      // Force redirect regardless of error
-      router.push("/login");
+      // Force full page reload to /login (not just router navigation)
+      window.location.href = "/login";
     } catch (error) {
       console.error("Sign out failed:", error);
       // Force redirect even if sign out fails
-      router.push("/login");
+      window.location.href = "/login";
     }
   };
 
