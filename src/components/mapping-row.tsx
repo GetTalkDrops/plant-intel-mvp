@@ -1,5 +1,4 @@
 "use client";
-
 import { TARGET_FIELDS, type TargetField } from "../lib/field-options";
 
 interface MappingRowProps {
@@ -15,27 +14,6 @@ export function MappingRow({
   confidence,
   onMappingChange,
 }: MappingRowProps) {
-  const getConfidenceBadge = () => {
-    if (targetField === "IGNORE") return null;
-
-    const confidencePercent = Math.round(confidence * 100);
-    let badgeColor = "bg-gray-100 text-gray-700";
-
-    if (confidencePercent >= 80) {
-      badgeColor = "bg-green-100 text-green-700";
-    } else if (confidencePercent >= 60) {
-      badgeColor = "bg-yellow-100 text-yellow-700";
-    } else {
-      badgeColor = "bg-orange-100 text-orange-700";
-    }
-
-    return (
-      <span className={`text-xs px-2 py-1 rounded ${badgeColor}`}>
-        {confidencePercent}%
-      </span>
-    );
-  };
-
   return (
     <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
       {/* Source Column */}
@@ -54,7 +32,11 @@ export function MappingRow({
         <select
           value={targetField}
           onChange={(e) => onMappingChange(sourceColumn, e.target.value)}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className={`w-full text-sm border rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+            targetField === "SELECT" 
+              ? "border-red-500 text-red-600 font-semibold" 
+              : "border-gray-300"
+          }`}
         >
           {TARGET_FIELDS.map((field: TargetField) => (
             <option key={field.value} value={field.value}>
@@ -69,9 +51,6 @@ export function MappingRow({
           }
         </div>
       </div>
-
-      {/* Confidence Badge */}
-      <div className="shrink-0">{getConfidenceBadge()}</div>
     </div>
   );
 }

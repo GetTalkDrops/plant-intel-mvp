@@ -14,30 +14,56 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ found: false });
     }
 
-    // Look for saved mapping with this header signature
+    // Parse the incoming headers (now JSON array instead of hash)
+    let incomingHeaders: string[];
+    try {
+      incomingHeaders = JSON.parse(headerSignature);
+    } catch {
+      console.log("Invalid header signature format");
+      return NextResponse.json({ found: false });
+    }
+
+    // Get all mappings for this user
     const { data, error } = await supabase
       .from("csv_mappings")
       .select("*")
       .eq("user_email", userEmail)
-      .eq("header_signature", headerSignature)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    console.log("Supabase query result:", { data, error, count: data?.length });
+      .order("created_at", { ascending: false });
 
     if (error || !data || data.length === 0) {
-      console.log("No saved mapping found");
+      console.log("No saved mappings found");
       return NextResponse.json({ found: false });
     }
 
-    const savedMapping = data[0];
-    console.log("Found saved mapping:", savedMapping.file_name);
+    // Find EXACT match (compare actual header arrays)
+    for (const mapping of data) {
+      try {
+        const savedHeaders = JSON.parse(mapping.header_signature);
+        
+        // Check for exact match
+        if (savedHeaders.length === incomingHeaders.length) {
+          const sorted1 = [...savedHeaders].sort();
+          const sorted2 = [...incomingHeaders].sort();
+          const isExactMatch = sorted1.every((h, i) => h === sorted2[i]);
+          
+          if (isExactMatch) {
+            console.log("Found EXACT header match:", mapping.id);
+            return NextResponse.json({
+              found: true,
+              mapping: mapping.mapping_config,
+              createdAt: mapping.created_at,
+              fileName: mapping.file_name || "previous file"
+            });
+          }
+        }
+      } catch (e) {
+        console.log("Skipping invalid mapping:", mapping.id);
+        continue;
+      }
+    }
 
-    return NextResponse.json({
-      found: true,
-      mapping: savedMapping.mapping_config,
-      createdAt: savedMapping.created_at,
-    });
+    console.log("No exact match found");
+    return NextResponse.json({ found: false });
   } catch (error) {
     console.error("Error fetching saved mapping:", error);
     return NextResponse.json({ found: false });

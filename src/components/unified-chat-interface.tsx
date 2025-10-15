@@ -44,6 +44,8 @@ interface PendingMapping {
   fileName: string;
   headerSignature?: string;
   fileHash?: string;
+  usingSavedMapping?: boolean;
+  savedFileName?: string;
 }
 
 type SavedMessage = {
@@ -116,12 +118,9 @@ export function UnifiedChatInterface() {
     if (!user?.email) return;
 
     const loadSession = async () => {
-      console.log("🔄 Loading session for user:", user.email);
-      console.log("📍 Session param from URL:", sessionParam);
 
       // If no session param, clear messages and show landing page
       if (!stableSessionId) {
-        console.log("🆕 No session param - clearing messages for new chat");
         setMessages([]);
         setCumulativeSavings(0);
         return;
@@ -149,15 +148,12 @@ export function UnifiedChatInterface() {
         if (!sessions || sessions.length === 0) return;
 
         const session = sessions[0];
-        console.log("📊 Found sessions:", sessions?.length || 0);
         // Load messages for this session
         const { data: savedMessages } = await supabase
           .from("chat_messages")
           .select("*")
           .eq("session_id", session.id)
           .order("created_at", { ascending: true });
-        console.log("💬 Found messages:", savedMessages?.length || 0);
-        console.log("📨 Message data:", savedMessages);
         if (savedMessages && savedMessages.length > 0) {
           const loadedMessages: ChatMessage[] = [];
 
@@ -335,7 +331,6 @@ export function UnifiedChatInterface() {
   };
 
   const handleFileUpload = async (file: File) => {
-    console.log("Starting file upload:", file.name, file.size);
 
     const uploadMessage: ChatMessage = {
       id: "upload-" + Date.now().toString(),
@@ -373,9 +368,6 @@ export function UnifiedChatInterface() {
         );
       const sampleRows = allRows.slice(0, 5);
 
-      console.log(
-        `Parsed ${allRows.length} total rows, ${headers.length} columns`
-      );
 
       const { generateHeaderSignature, generateFileHash } = await import(
         "@/lib/file-hash"
@@ -383,42 +375,34 @@ export function UnifiedChatInterface() {
       const headerSignature = generateHeaderSignature(headers);
       const fileHash = generateFileHash(text);
 
-      console.log("Header signature:", headerSignature);
-      console.log("File hash:", fileHash);
 
+      // Check for saved mapping (for pre-fill, not auto-apply)
       const savedMappingResponse = await fetch(
-        `/api/csv-mapping/saved?headerSignature=${headerSignature}&userEmail=${encodeURIComponent(
+        `/api/csv-mapping/saved?headerSignature=${encodeURIComponent(
+          headerSignature
+        )}&userEmail=${encodeURIComponent(
           user?.email || "skinner.chris@gmail.com"
         )}`
       );
 
-      let shouldShowModal = true;
       let mappingsList: ColumnMapping[] = [];
       let unmappedList: string[] = [];
+      let usingSavedMapping = false;
+      let savedFileName = "";
 
+      // Try to get saved mapping first (for exact match pre-fill)
       if (savedMappingResponse.ok) {
         const savedData = await savedMappingResponse.json();
-
         if (savedData.found) {
-          console.log("Found saved mapping, auto-applying");
           mappingsList = savedData.mapping;
           unmappedList = [];
-          shouldShowModal = false;
-
-          const infoMessage: ChatMessage = {
-            id: "mapping-info-" + Date.now().toString(),
-            message: `Using saved field mapping for this file structure. Click "Edit Mapping" to modify.`,
-            isUser: false,
-            timestamp: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          };
-          setMessages((prev) => [...prev, infoMessage]);
+          usingSavedMapping = true;
+          savedFileName = savedData.fileName || "previous file";
         }
       }
 
-      if (shouldShowModal) {
+      // If no saved mapping, get AI suggestions
+      if (!usingSavedMapping) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -441,10 +425,8 @@ export function UnifiedChatInterface() {
           unmappedList = mapping.unmappedColumns || [];
         } catch (apiError: unknown) {
           clearTimeout(timeoutId);
-
           const errorMessage =
             apiError instanceof Error ? apiError.message : "Unknown API error";
-
           if (apiError instanceof Error && apiError.name === "AbortError") {
             throw new Error("API call timed out after 30 seconds");
           } else {
@@ -453,6 +435,7 @@ export function UnifiedChatInterface() {
         }
       }
 
+      // ALWAYS show modal (with pre-filled mappings or AI suggestions)
       setPendingMapping({
         mappings: mappingsList,
         unmappedColumns: unmappedList,
@@ -462,39 +445,20 @@ export function UnifiedChatInterface() {
         fileName: file.name,
         headerSignature,
         fileHash,
+        usingSavedMapping,
+        savedFileName,
       });
 
-      if (shouldShowModal) {
-        setShowMappingModal(true);
-        setIsLoading(false);
-      } else {
-        await handleMappingConfirmDirect({
-          mappings: mappingsList,
-          unmappedColumns: unmappedList,
-          allRows: allRows,
-          headers: headers,
-          fileName: file.name,
-          headerSignature,
-          fileHash,
-        });
-      }
+      setShowMappingModal(true);
+      setIsLoading(false);
     } catch (error: unknown) {
-      console.error("CSV processing error:", error);
-
+      console.error("File upload error:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
 
       const errorResponse: ChatMessage = {
         id: "error-" + Date.now().toString(),
-        message: `I encountered an issue processing your file: ${errorMessage}
-
-Please ensure your file is:
-- A valid CSV format
-- Contains column headers in the first row  
-- Has at least some data rows
-- Is not corrupted or too large
-
-You can try uploading again or contact support if the issue persists.`,
+        message: `Error processing file: ${errorMessage}`,
         isUser: false,
         timestamp: new Date().toLocaleTimeString([], {
           hour: "2-digit",
@@ -506,7 +470,6 @@ You can try uploading again or contact support if the issue persists.`,
       setIsLoading(false);
     }
   };
-
   const handleMappingConfirmDirect = async (pendingData: {
     mappings: ColumnMapping[];
     unmappedColumns: string[];
@@ -516,8 +479,6 @@ You can try uploading again or contact support if the issue persists.`,
     headerSignature?: string;
     fileHash?: string;
   }) => {
-    console.log("=== DIRECT MAPPING CONFIRM ===");
-    console.log("File:", pendingData.fileName);
 
     try {
       const mappedData = pendingData.allRows.map((row: string[]) => {
@@ -528,7 +489,6 @@ You can try uploading again or contact support if the issue persists.`,
         return rowData;
       });
 
-      console.log(`Uploading ${mappedData.length} rows`);
 
       const uploadResponse = await fetch("/api/upload-csv", {
         method: "POST",
@@ -546,7 +506,6 @@ You can try uploading again or contact support if the issue persists.`,
       const uploadResult = await uploadResponse.json();
 
       if (uploadResponse.ok && uploadResult.success) {
-        console.log("Upload successful:", uploadResult);
 
         const successMessage: ChatMessage = {
           id: "storage-success-" + Date.now().toString(),
@@ -578,14 +537,9 @@ You can try uploading again or contact support if the issue persists.`,
             setMessages((prev) => [...prev, summaryMessage]);
           }, 500);
           if (uploadResult.autoAnalysis?.totalSavingsOpportunity) {
-            console.log(
-              "Found savings:",
-              uploadResult.autoAnalysis.totalSavingsOpportunity
-            );
             setCumulativeSavings((prev) => {
               const newTotal =
                 prev + uploadResult.autoAnalysis.totalSavingsOpportunity;
-              console.log("Updating savings from", prev, "to", newTotal);
               return newTotal;
             });
           }
@@ -700,8 +654,6 @@ You can try uploading again or contact support if the issue persists.`,
   const handleMappingConfirm = async (confirmedMappings: ColumnMapping[]) => {
     if (!pendingMapping) return;
 
-    console.log("=== MAPPING CONFIRM STARTED ===");
-    console.log("Pending mapping:", pendingMapping.fileName);
 
     setShowMappingModal(false);
 
@@ -1039,6 +991,8 @@ You can try uploading again or contact support if the issue persists.`,
         </div>
 
         <CsvMappingModal
+          usingSavedMapping={pendingMapping?.usingSavedMapping || false}
+          savedFileName={pendingMapping?.savedFileName || ""}
           isOpen={showMappingModal}
           fileName={pendingMapping?.fileName || ""}
           mappings={pendingMapping?.mappings || []}
@@ -1091,6 +1045,8 @@ You can try uploading again or contact support if the issue persists.`,
       />
 
       <CsvMappingModal
+        usingSavedMapping={pendingMapping?.usingSavedMapping || false}
+        savedFileName={pendingMapping?.savedFileName || ""}
         isOpen={showMappingModal}
         fileName={pendingMapping?.fileName || ""}
         mappings={pendingMapping?.mappings || []}

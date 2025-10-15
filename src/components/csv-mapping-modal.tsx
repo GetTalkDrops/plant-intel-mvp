@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect } from "react";
 import { type ColumnMapping } from "@/lib/csvMapper";
 import { MappingRow } from "./mapping-row";
@@ -11,6 +10,8 @@ interface MappingModalProps {
   unmappedColumns: string[];
   onConfirm: (confirmedMappings: ColumnMapping[]) => void;
   onCancel: () => void;
+  usingSavedMapping?: boolean;
+  savedFileName?: string;
 }
 
 interface CurrentMapping {
@@ -25,14 +26,13 @@ export function CsvMappingModal({
   unmappedColumns,
   onConfirm,
   onCancel,
+  usingSavedMapping = false,
+  savedFileName = "",
 }: MappingModalProps) {
-  const [currentMappings, setCurrentMappings] = useState<
-    Record<string, CurrentMapping>
-  >({});
+  const [currentMappings, setCurrentMappings] = useState<Record<string, CurrentMapping>>({});
 
   useEffect(() => {
     const initial: Record<string, CurrentMapping> = {};
-
     mappings.forEach((m: ColumnMapping) => {
       initial[m.sourceColumn] = {
         targetField: m.targetField,
@@ -42,7 +42,7 @@ export function CsvMappingModal({
 
     unmappedColumns.forEach((col: string) => {
       initial[col] = {
-        targetField: "IGNORE",
+        targetField: "SELECT",
         confidence: 0,
       };
     });
@@ -52,102 +52,99 @@ export function CsvMappingModal({
 
   if (!isOpen) return null;
 
-  const handleMappingChange = (
-    sourceColumn: string,
-    newTarget: string
-  ): void => {
+  const handleMappingChange = (sourceColumn: string, newTarget: string): void => {
     setCurrentMappings((prev: Record<string, CurrentMapping>) => ({
       ...prev,
       [sourceColumn]: {
-        ...prev[sourceColumn],
         targetField: newTarget,
+        confidence: prev[sourceColumn]?.confidence || 0,
       },
     }));
   };
 
   const handleConfirm = (): void => {
     const confirmedMappings: ColumnMapping[] = Object.entries(currentMappings)
-      .filter(
-        ([, mapping]: [string, CurrentMapping]) =>
-          mapping.targetField !== "IGNORE"
-      )
-      .map(
-        ([sourceColumn, mapping]: [string, CurrentMapping]): ColumnMapping => ({
-          sourceColumn,
-          targetField: mapping.targetField,
-          confidence: mapping.confidence,
-          dataType: "string",
-        })
-      );
+      .filter(([, mapping]) => mapping.targetField !== "SELECT" && mapping.targetField !== "IGNORE")
+      .map(([sourceColumn, mapping]) => ({
+        sourceColumn,
+        targetField: mapping.targetField,
+        confidence: mapping.confidence,
+        dataType: "string",
+      }));
 
     onConfirm(confirmedMappings);
   };
 
-  const allColumns: string[] = Object.keys(currentMappings);
-  const mappedCount: number = Object.values(currentMappings).filter(
-    (m: CurrentMapping) => m.targetField !== "IGNORE"
-  ).length;
-  const ignoredCount: number = allColumns.length - mappedCount;
+  const allColumns = [
+    ...mappings.map((m) => m.sourceColumn),
+    ...unmappedColumns,
+  ];
 
   return (
-    <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Review CSV Field Mapping
-          </h2>
-          <p className="text-sm text-gray-600 mt-1">
-            File: <span className="font-medium">{fileName}</span>
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            {mappedCount} field{mappedCount !== 1 ? "s" : ""} will be imported •{" "}
-            {ignoredCount} will be skipped
-          </p>
-        </div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <h2 className="text-2xl font-bold mb-4">Map CSV Columns</h2>
+        <p className="text-gray-600 mb-6">
+          File: <span className="font-semibold">{fileName}</span>
+        </p>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="space-y-3">
-            <div className="text-sm text-gray-700 mb-4">
-              Review the field mappings below. You can change how each column
-              maps to your data fields, or mark fields to skip.
+        {usingSavedMapping && (
+          <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg
+                  className="h-5 w-5 text-blue-500 mt-0.5"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-blue-800">
+                  Using saved mapping for: {savedFileName}
+                </h3>
+                <p className="mt-1 text-sm text-blue-700">
+                  Your previous field mappings have been applied. Review and edit if needed, then click Confirm.
+                </p>
+              </div>
             </div>
-
-            {allColumns.map((sourceColumn: string) => (
-              <MappingRow
-                key={sourceColumn}
-                sourceColumn={sourceColumn}
-                targetField={currentMappings[sourceColumn].targetField}
-                confidence={currentMappings[sourceColumn].confidence}
-                onMappingChange={handleMappingChange}
-              />
-            ))}
           </div>
+        )}
 
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-800">
-              <strong>Tip:</strong> Fields marked as Do not Import will be
-              ignored. You can always re-upload if you need to adjust mappings
-              later.
-            </p>
-          </div>
+        <div className="space-y-2">
+          {allColumns.map((col) => (
+            <MappingRow
+              key={col}
+              sourceColumn={col}
+              targetField={currentMappings[col]?.targetField || "SELECT"}
+              confidence={currentMappings[col]?.confidence || 0}
+              onMappingChange={(col, newTarget) => handleMappingChange(col, newTarget)}
+            />
+          ))}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3 bg-gray-50">
+        <div className="mt-6 flex justify-end space-x-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
-            Confirm & Import ({mappedCount} field{mappedCount !== 1 ? "s" : ""})
+            Confirm Mapping
           </button>
         </div>
       </div>
     </div>
   );
 }
+
 export default CsvMappingModal;

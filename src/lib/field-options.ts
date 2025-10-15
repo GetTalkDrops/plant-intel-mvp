@@ -7,9 +7,19 @@ export interface TargetField {
 
 export const TARGET_FIELDS: TargetField[] = [
   {
-    value: "work_order_id",
+    value: "SELECT",
+    label: "⚠️ Select a field...",
+    description: "Choose how to map this column",
+  },
+  {
+    value: "work_order_number",
     label: "Work Order ID",
     description: "Unique identifier for the work order",
+  },
+  {
+    value: "facility_id",
+    label: "Facility ID",
+    description: "Plant or facility identifier",
   },
   {
     value: "material_code",
@@ -17,14 +27,19 @@ export const TARGET_FIELDS: TargetField[] = [
     description: "Product or material identifier",
   },
   {
-    value: "planned_quantity",
-    label: "Planned Quantity",
-    description: "Planned production quantity",
+    value: "supplier_id",
+    label: "Supplier ID",
+    description: "Supplier or vendor identifier",
   },
   {
-    value: "actual_quantity",
-    label: "Actual Quantity",
-    description: "Actual quantity produced",
+    value: "units_produced",
+    label: "Units Produced",
+    description: "Quantity produced",
+  },
+  {
+    value: "units_scrapped",
+    label: "Units Scrapped",
+    description: "Number of defective units",
   },
   {
     value: "planned_material_cost",
@@ -47,70 +62,24 @@ export const TARGET_FIELDS: TargetField[] = [
     description: "Actual labor hours used",
   },
   {
-    value: "equipment_id",
-    label: "Equipment ID",
+    value: "machine_id",
+    label: "Machine ID",
     description: "Machine or equipment identifier",
-  },
-  {
-    value: "status",
-    label: "Status",
-    description: "Work order status (completed, in progress, etc.)",
-  },
-  {
-    value: "planned_start_date",
-    label: "Planned Start Date",
-    description: "Scheduled start date",
-  },
-  {
-    value: "actual_start_date",
-    label: "Actual Start Date",
-    description: "Actual start date",
-  },
-  {
-    value: "planned_end_date",
-    label: "Planned End Date",
-    description: "Scheduled completion date",
-  },
-  {
-    value: "actual_end_date",
-    label: "Actual End Date",
-    description: "Actual completion date",
-  },
-  {
-    value: "quality_result",
-    label: "Quality Result",
-    description: "Quality inspection outcome",
-  },
-  {
-    value: "units_scrapped",
-    label: "Units Scrapped",
-    description: "Number of defective units",
   },
   {
     value: "quality_issues",
     label: "Quality Issues",
     description: "Description of quality problems",
   },
-  { value: "shift", label: "Shift", description: "Work shift identifier" },
   {
-    value: "plant",
-    label: "Plant/Facility",
-    description: "Manufacturing plant or facility",
+    value: "production_period_start",
+    label: "Production Start",
+    description: "Production period start date/time",
   },
   {
-    value: "department",
-    label: "Department",
-    description: "Department or work center",
-  },
-  {
-    value: "operator",
-    label: "Operator",
-    description: "Machine operator or worker ID",
-  },
-  {
-    value: "supervisor",
-    label: "Supervisor",
-    description: "Supervisor or manager",
+    value: "production_period_end",
+    label: "Production End",
+    description: "Production period end date/time",
   },
   {
     value: "IGNORE",
