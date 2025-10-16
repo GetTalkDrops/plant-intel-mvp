@@ -228,8 +228,105 @@ export async function POST(request: NextRequest) {
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
     );
+
+    // === NEW: Create analysis review record for HITL ===
+    if (autoAnalysis && !autoAnalysis.error) {
+      console.log("=== ATTEMPTING TO CREATE REVIEW RECORD ===");
+      try {
+        // Find or create customer profile for this user
+        const { data: existingProfile } = await supabase
+          .from("customer_profiles")
+          .select("id")
+          .eq("user_email", userEmail)
+          .single();
+
+        console.log("Existing profile:", existingProfile);
+
+        let customerProfileId = existingProfile?.id;
+        console.log("Creating new customer profile for:", userEmail);
+
+        if (!customerProfileId) {
+          console.log("Creating new customer profile for:", userEmail);
+          try {
+            // Create a basic customer profile
+            const insertResult = await supabase
+              .from("customer_profiles")
+              .insert({
+                user_email: userEmail,
+                company_name: userEmail.split("@")[0] + " Manufacturing",
+                industry: "Manufacturing",
+              })
+              .select("id")
+              .single();
+
+            console.log(
+              "Insert result:",
+              JSON.stringify(insertResult, null, 2)
+            );
+
+            if (insertResult.error) {
+              console.error("Profile creation error:", insertResult.error);
+            } else {
+              console.log("Created new profile:", insertResult.data);
+              customerProfileId = insertResult.data?.id;
+            }
+          } catch (profileErr) {
+            console.error("Profile creation exception:", profileErr);
+          }
+        }
+
+        if (customerProfileId) {
+          // Count total issues
+          const issuesFound =
+            (autoAnalysis.cost?.cards?.length || 0) +
+            (autoAnalysis.equipment?.cards?.length || 0) +
+            (autoAnalysis.quality?.cards?.length || 0) +
+            (autoAnalysis.efficiency?.cards?.length || 0);
+
+          console.log("Issues found:", issuesFound);
+          console.log("Savings:", autoAnalysis.totalSavingsOpportunity);
+
+          // Create analysis review record
+          const { error: reviewError } = await supabase
+            .from("analysis_reviews")
+            .insert({
+              batch_id: result.batchId,
+              customer_profile_id: customerProfileId,
+              status: "pending",
+              original_results: {
+                executive_summary: autoAnalysis.executiveSummary,
+                cost: autoAnalysis.cost,
+                equipment: autoAnalysis.equipment,
+                quality: autoAnalysis.quality,
+                efficiency: autoAnalysis.efficiency,
+              },
+              savings_identified: autoAnalysis.totalSavingsOpportunity || 0,
+              issues_found: issuesFound,
+            });
+
+          if (reviewError) {
+            console.error("Failed to create analysis review:", reviewError);
+          } else {
+            console.log(
+              "Analysis review created successfully for batch:",
+              result.batchId
+            );
+          }
+        }
+      } catch (reviewCreationError) {
+        console.error("Error creating analysis review:", reviewCreationError);
+        // Don't fail the whole request if review creation fails
+      }
+    }
+    // === END NEW CODE ===
 
     // Create data_uploads record
     const { data: uploadRecord, error: uploadError } = await supabase
@@ -295,6 +392,7 @@ export async function POST(request: NextRequest) {
       }
       sessionRecord = newSession;
     }
+
     // Save initial messages
     if (sessionRecord && autoAnalysis) {
       const messages = [
@@ -318,6 +416,7 @@ export async function POST(request: NextRequest) {
 
       await supabase.from("chat_messages").insert(messages);
     }
+
     return NextResponse.json({
       success: true,
       message: `Successfully processed ${result.recordsInserted} work orders`,
