@@ -57,7 +57,8 @@ async def process_analyze_query(query_data: dict):
     query = query_data.get('query', '')
     user_email = query_data.get('user_email', '')
     facility_id = query_data.get('facility_id', 1)
-    batch_id = query_data.get('batch_id', None)  # Add this
+    batch_id = query_data.get('batch_id', None)
+    config = query_data.get('config', None)  # NEW: Accept config
     
     if not query:
         return {"error": "Query is required"}
@@ -68,7 +69,7 @@ async def process_analyze_query(query_data: dict):
         facility_id = 1
     
     try:
-        result = query_router.route_query(query, facility_id, batch_id)  # Pass batch_id
+        result = query_router.route_query(query, facility_id, batch_id, config)  # Pass config
         return result
     except Exception as e:
         return {"error": str(e), "type": "error"}

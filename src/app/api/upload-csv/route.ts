@@ -27,6 +27,19 @@ export async function POST(request: NextRequest) {
     const { mappedData, mapping, fileName, headerSignature, fileHash } =
       await request.json();
 
+    // Create data upload record and chat session
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
     if (!mappedData || !mapping) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -57,6 +70,42 @@ export async function POST(request: NextRequest) {
 
     console.log(`Successfully stored ${result.recordsInserted} records`);
 
+    // Fetch customer's analysis configuration
+    let analysisConfig = null;
+    try {
+      // Find or create customer profile
+      const { data: profile } = await supabase
+        .from("customer_profiles")
+        .select("id")
+        .eq("user_email", userEmail)
+        .single();
+
+      if (profile) {
+        // Fetch their config
+        const { data: config } = await supabase
+          .from("analysis_configurations")
+          .select("*")
+          .eq("customer_profile_id", profile.id)
+          .single();
+
+        if (config) {
+          // Transform DB config to ML service format
+          analysisConfig = {
+            labor_rate_hourly: config.cost_labor_rate_hourly,
+            variance_threshold_pct: config.cost_variance_threshold_pct,
+            min_variance_amount: config.cost_min_variance_amount,
+            pattern_min_orders: config.cost_pattern_min_orders,
+            scrap_cost_per_unit: config.equipment_scrap_cost_per_unit,
+            excluded_suppliers: config.excluded_suppliers || [],
+            excluded_materials: config.excluded_materials || [],
+            excluded_machines: config.excluded_machines || [],
+          };
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching analysis config:", err);
+      // Continue with null config (ML will use defaults)
+    }
     // Auto-analysis with all categories
     let autoAnalysis = null;
     try {
@@ -80,6 +129,7 @@ export async function POST(request: NextRequest) {
             user_email: userEmail,
             facility_id: facilityId,
             batch_id: batchId,
+            config: analysisConfig,
           }),
         }),
         fetch("http://localhost:8000/analyze", {
@@ -90,6 +140,7 @@ export async function POST(request: NextRequest) {
             user_email: userEmail,
             facility_id: facilityId,
             batch_id: batchId,
+            config: analysisConfig,
           }),
         }),
         fetch("http://localhost:8000/analyze", {
@@ -100,6 +151,7 @@ export async function POST(request: NextRequest) {
             user_email: userEmail,
             facility_id: facilityId,
             batch_id: batchId,
+            config: analysisConfig,
           }),
         }),
         fetch("http://localhost:8000/analyze", {
@@ -110,6 +162,7 @@ export async function POST(request: NextRequest) {
             user_email: userEmail,
             facility_id: facilityId,
             batch_id: batchId,
+            config: analysisConfig,
           }),
         }),
       ]);
@@ -231,19 +284,6 @@ export async function POST(request: NextRequest) {
         error: true,
       };
     }
-
-    // Create data upload record and chat session
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
 
     // === NEW: Create analysis review record for HITL ===
     if (autoAnalysis && !autoAnalysis.error) {

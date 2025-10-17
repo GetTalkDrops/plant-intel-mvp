@@ -19,8 +19,31 @@ class EquipmentPredictor:
         
         self.supabase: Client = create_client(url, key)
     
-    def predict_failures(self, facility_id: int = 1, batch_id: str = None) -> Dict:
+    def predict_failures(self, facility_id: int = 1, batch_id: str = None, config: dict = None) -> Dict:
         """Predict equipment failures with pattern detection and breakdown analysis"""
+        
+        # Extract config or use defaults
+        if config is None:
+            config = {}
+        
+        labor_rate = config.get('labor_rate_hourly', 200)
+        scrap_cost_per_unit = config.get('scrap_cost_per_unit', 75)
+        pattern_min_count = config.get('pattern_min_orders', 3)
+        excluded_machines = config.get('excluded_machines', [])
+        
+        # Risk thresholds
+        risk_thresholds = config.get('equipment_risk_thresholds', {
+            'labor_variance': 5,
+            'quality_rate': 0.3,
+            'scrap_ratio': 3
+        })
+        
+        # Labor interpretation thresholds
+        labor_interpretations = config.get('equipment_labor_interpretations', {
+            'severe': 10,
+            'moderate': 5,
+            'minor': 2
+        })
         
         query = self.supabase.table("work_orders").select("*").eq("facility_id", facility_id)
 
@@ -45,6 +68,10 @@ class EquipmentPredictor:
         
         df = pd.DataFrame(response.data)
         
+        # Apply exclusions
+        if excluded_machines and 'machine_id' in df.columns:
+            df = df[~df['machine_id'].isin(excluded_machines)]
+        
         if 'machine_id' not in df.columns or df['machine_id'].isna().all():
             return {
                 "insights": [],
@@ -62,7 +89,13 @@ class EquipmentPredictor:
                 continue
             
             try:
-                breakdown = self._calculate_equipment_breakdown(machine_data)
+                breakdown = self._calculate_equipment_breakdown(
+                    machine_data,
+                    labor_rate,
+                    scrap_cost_per_unit,
+                    risk_thresholds,
+                    labor_interpretations
+                )
                 
                 if breakdown['total_impact'] > 500:
                     insights.append({
@@ -85,9 +118,9 @@ class EquipmentPredictor:
             machine_data = df[df['machine_id'] == machine_id]
             quality_issue_count = (machine_data['quality_issues'].astype(str).str.lower() == 'true').sum()
             
-            if quality_issue_count >= 3:  # Pattern threshold
+            if quality_issue_count >= pattern_min_count:
                 total_scrap = int(machine_data['units_scrapped'].fillna(0).sum())
-                scrap_cost = total_scrap * 75
+                scrap_cost = total_scrap * scrap_cost_per_unit
                 
                 quality_machines.append({
                     'machine_id': machine_id,
@@ -107,7 +140,7 @@ class EquipmentPredictor:
                     'order_count': machine['quality_issue_count'],
                     'total_impact': machine['estimated_impact'],
                     'issue_rate': (machine['quality_issue_count'] / machine['total_orders']) * 100,
-                    'work_orders': machine['work_orders'][:10]  # Limit to 10 for display
+                    'work_orders': machine['work_orders'][:10]
                 })
         
         insights.sort(key=lambda x: x['estimated_downtime_cost'], reverse=True)
@@ -120,7 +153,14 @@ class EquipmentPredictor:
             "message": f"Found {len(insights)} equipment issues and {len(patterns)} patterns"
         }
     
-    def _calculate_equipment_breakdown(self, machine_data: pd.DataFrame) -> dict:
+    def _calculate_equipment_breakdown(
+        self,
+        machine_data: pd.DataFrame,
+        labor_rate: float,
+        scrap_cost_per_unit: float,
+        risk_thresholds: dict,
+        labor_interpretations: dict
+    ) -> dict:
         """Calculate detailed breakdown of equipment issues"""
         
         labor_variances = []
@@ -131,10 +171,10 @@ class EquipmentPredictor:
         
         avg_labor_variance = np.mean(labor_variances)
         total_labor_hours_over = sum(max(0, v) for v in labor_variances)
-        labor_cost_impact = int(total_labor_hours_over * 200)
+        labor_cost_impact = int(total_labor_hours_over * labor_rate)
         
         total_scrap = int(machine_data['units_scrapped'].fillna(0).sum())
-        scrap_cost_impact = int(total_scrap * 75)
+        scrap_cost_impact = int(total_scrap * scrap_cost_per_unit)
         quality_issue_count = (machine_data['quality_issues'].astype(str).str.lower() == 'true').sum()
         
         material_waste = 0
@@ -160,17 +200,18 @@ class EquipmentPredictor:
         }
         primary_issue = max(impacts.items(), key=lambda x: x[1])[0]
         
+        # Calculate risk score using config thresholds
         risk_factors = 0
-        if avg_labor_variance > 5:
+        if avg_labor_variance > risk_thresholds.get('labor_variance', 5):
             risk_factors += 30
-        if quality_issue_count > len(machine_data) * 0.3:
+        if quality_issue_count > len(machine_data) * risk_thresholds.get('quality_rate', 0.3):
             risk_factors += 40
-        if total_scrap > len(machine_data) * 3:
+        if total_scrap > len(machine_data) * risk_thresholds.get('scrap_ratio', 3):
             risk_factors += 30
         
         risk_score = min(95, 40 + risk_factors)
         
-        labor_driver = self._determine_labor_driver(avg_labor_variance, len(machine_data))
+        labor_driver = self._determine_labor_driver(avg_labor_variance, len(machine_data), labor_interpretations)
         quality_driver = self._determine_quality_driver(quality_issue_count, total_scrap, len(machine_data))
         
         return {
@@ -200,13 +241,17 @@ class EquipmentPredictor:
             'orders_affected': len(machine_data)
         }
     
-    def _determine_labor_driver(self, avg_variance: float, order_count: int) -> str:
-        """Determine labor impact description"""
-        if avg_variance > 10:
+    def _determine_labor_driver(self, avg_variance: float, order_count: int, thresholds: dict) -> str:
+        """Determine labor impact description using config thresholds"""
+        severe = thresholds.get('severe', 10)
+        moderate = thresholds.get('moderate', 5)
+        minor = thresholds.get('minor', 2)
+        
+        if avg_variance > severe:
             return f"Severe performance degradation (avg +{avg_variance:.1f} hrs/order)"
-        elif avg_variance > 5:
+        elif avg_variance > moderate:
             return f"Moderate performance issues (avg +{avg_variance:.1f} hrs/order)"
-        elif avg_variance > 2:
+        elif avg_variance > minor:
             return f"Minor inefficiency (avg +{avg_variance:.1f} hrs/order)"
         else:
             return "Labor performance within normal range"

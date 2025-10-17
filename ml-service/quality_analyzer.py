@@ -19,8 +19,22 @@ class QualityAnalyzer:
         
         self.supabase: Client = create_client(url, key)
     
-    def analyze_quality_patterns(self, facility_id: int = 1, batch_id: str = None) -> Dict:
+    def analyze_quality_patterns(self, facility_id: int = 1, batch_id: str = None, config: dict = None) -> Dict:
         """Analyze quality patterns with breakdown and pattern detection"""
+        
+        # Extract config or use defaults
+        if config is None:
+            config = {}
+        
+        labor_rate = config.get('labor_rate_hourly', 200)
+        scrap_cost_per_unit = config.get('scrap_cost_per_unit', 75)
+        pattern_min_count = config.get('pattern_min_orders', 3)
+        min_issue_rate = config.get('quality_min_issue_rate_pct', 10)
+        scrap_interpretations = config.get('quality_scrap_interpretations', {
+            'critical': 20,
+            'high': 10,
+            'moderate': 5
+        })
         
         query = self.supabase.table("work_orders").select("*").eq("facility_id", facility_id)
 
@@ -66,9 +80,13 @@ class QualityAnalyzer:
                     continue
                 
                 try:
-                    breakdown = self._calculate_quality_breakdown(material_data)
+                    breakdown = self._calculate_quality_breakdown(
+                        material_data,
+                        labor_rate,
+                        scrap_cost_per_unit
+                    )
                     
-                    if breakdown['total_impact'] > 500 or breakdown['issue_rate'] > 10:
+                    if breakdown['total_impact'] > 500 or breakdown['issue_rate'] > min_issue_rate:
                         insights.append({
                             'material_code': material_code,
                             'scrap_rate_per_order': breakdown['scrap_per_order'],
@@ -91,10 +109,10 @@ class QualityAnalyzer:
                 material_orders = df[df['material_code'] == material_code]
                 quality_issues = (material_orders['quality_issues'].astype(str).str.lower() == 'true').sum()
                 
-                if quality_issues >= 3:  # Pattern threshold
+                if quality_issues >= pattern_min_count:
                     total_scrap = int(material_orders['units_scrapped'].fillna(0).sum())
                     defect_rate = (quality_issues / len(material_orders)) * 100
-                    scrap_cost = total_scrap * 75
+                    scrap_cost = total_scrap * scrap_cost_per_unit
                     
                     material_quality.append({
                         'material_code': material_code,
@@ -115,7 +133,7 @@ class QualityAnalyzer:
                         'order_count': mat['defect_count'],
                         'total_impact': mat['estimated_impact'],
                         'defect_rate': mat['defect_rate'],
-                        'work_orders': mat['work_orders'][:10]  # Limit to 10 for display
+                        'work_orders': mat['work_orders'][:10]
                     })
         
         insights.sort(key=lambda x: x['estimated_cost_impact'], reverse=True)
@@ -129,7 +147,12 @@ class QualityAnalyzer:
             "message": f"Found {len(insights)} quality issues and {len(patterns)} patterns"
         }
     
-    def _calculate_quality_breakdown(self, material_data: pd.DataFrame) -> dict:
+    def _calculate_quality_breakdown(
+        self,
+        material_data: pd.DataFrame,
+        labor_rate: float,
+        scrap_cost_per_unit: float
+    ) -> dict:
         """Calculate detailed quality issue breakdown"""
         
         total_scrap = int(material_data['units_scrapped'].fillna(0).sum())
@@ -138,7 +161,7 @@ class QualityAnalyzer:
         quality_issue_orders = (material_data['quality_issues'].astype(str).str.lower() == 'true').sum()
         issue_rate = (quality_issue_orders / len(material_data)) * 100
         
-        scrap_cost = int(total_scrap * 75)
+        scrap_cost = int(total_scrap * scrap_cost_per_unit)
         
         rework_labor = 0
         for _, row in material_data.iterrows():
@@ -148,7 +171,7 @@ class QualityAnalyzer:
                 if actual > planned:
                     rework_labor += (actual - planned)
         
-        rework_cost = int(rework_labor * 200)
+        rework_cost = int(rework_labor * labor_rate)
         
         material_waste_cost = 0
         for _, row in material_data.iterrows():

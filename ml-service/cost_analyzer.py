@@ -17,7 +17,7 @@ class CostAnalyzer:
             raise ValueError("Missing Supabase credentials")
         
         self.supabase = create_client(url, key)
-        self.LABOR_RATE_PER_HOUR = 200
+        self.LABOR_RATE_PER_HOUR = 200  # Keep for backward compatibility
         self.explainer = PatternExplainer(labor_rate_per_hour=self.LABOR_RATE_PER_HOUR)
 
     def _calculate_confidence(self, row, df, all_patterns):
@@ -94,8 +94,19 @@ class CostAnalyzer:
             'labor': format_context(labor_ratio)
         }
     
-    def predict_cost_variance(self, facility_id: int = 1, batch_id: Optional[str] = None) -> Dict:
+    def predict_cost_variance(self, facility_id: int = 1, batch_id: Optional[str] = None, config: dict = None) -> Dict:
         """Analyze cost variances with rich pattern narratives"""
+        
+        # Extract config or use defaults
+        if config is None:
+            config = {}
+        
+        labor_rate = config.get('labor_rate_hourly', 200)
+        variance_threshold_pct = config.get('variance_threshold_pct', 5)
+        min_variance_amount = config.get('min_variance_amount', 1000)
+        pattern_min_orders = config.get('pattern_min_orders', 3)
+        excluded_suppliers = config.get('excluded_suppliers', [])
+        excluded_materials = config.get('excluded_materials', [])
         
         query = self.supabase.table("work_orders").select("*").eq("facility_id", facility_id)
         
@@ -124,6 +135,12 @@ class CostAnalyzer:
         
         df = pd.DataFrame(response.data)
         
+        # Apply exclusions early
+        if excluded_suppliers and 'supplier_id' in df.columns:
+            df = df[~df['supplier_id'].isin(excluded_suppliers)]
+        if excluded_materials and 'material_code' in df.columns:
+            df = df[~df['material_code'].isin(excluded_materials)]
+        
         # Validate required fields
         required_fields = [
             "planned_material_cost",
@@ -150,17 +167,17 @@ class CostAnalyzer:
                 "missing_fields": all_missing,
             }
         
-        # Calculate variances
+        # Calculate variances using config-based labor rate
         df["material_variance"] = df["actual_material_cost"] - df["planned_material_cost"]
-        df["labor_cost_planned"] = df["planned_labor_hours"] * self.LABOR_RATE_PER_HOUR
-        df["labor_cost_actual"] = df["actual_labor_hours"] * self.LABOR_RATE_PER_HOUR
+        df["labor_cost_planned"] = df["planned_labor_hours"] * labor_rate
+        df["labor_cost_actual"] = df["actual_labor_hours"] * labor_rate
         df["labor_variance"] = df["labor_cost_actual"] - df["labor_cost_planned"]
         df["total_variance"] = df["material_variance"] + df["labor_variance"]
         
-        # Calculate average order value for threshold
+        # Calculate threshold using config values
         df["total_planned"] = df["planned_material_cost"] + df["labor_cost_planned"]
         avg_order_value = df["total_planned"].mean()
-        variance_threshold = max(1000, avg_order_value * 0.05)
+        variance_threshold = max(min_variance_amount, avg_order_value * (variance_threshold_pct / 100))
         
         # Filter significant variances
         significant = df[abs(df["total_variance"]) > variance_threshold].copy()
@@ -183,7 +200,7 @@ class CostAnalyzer:
             }).reset_index()
             
             material_groups.columns = ["material_code", "order_count", "total_impact", "avg_variance", "work_orders"]
-            material_groups = material_groups[material_groups["order_count"] >= 3]
+            material_groups = material_groups[material_groups["order_count"] >= pattern_min_orders]
             
             for _, row in material_groups.iterrows():
                 # Get work orders for this material
@@ -213,7 +230,7 @@ class CostAnalyzer:
                     "total_impact": float(row["total_impact"]),
                     "avg_variance": float(row["avg_variance"]),
                     "work_orders": row["work_orders"],
-                    "narrative": narrative  # ADD RICH NARRATIVE
+                    "narrative": narrative
                 })
         
         # Detect patterns - Supplier IDs WITH NARRATIVES
@@ -225,7 +242,7 @@ class CostAnalyzer:
             }).reset_index()
             
             supplier_groups.columns = ["supplier_id", "order_count", "total_impact", "avg_variance", "work_orders"]
-            supplier_groups = supplier_groups[supplier_groups["order_count"] >= 3]
+            supplier_groups = supplier_groups[supplier_groups["order_count"] >= pattern_min_orders]
             
             for _, row in supplier_groups.iterrows():
                 # Get work orders for this supplier
@@ -255,7 +272,7 @@ class CostAnalyzer:
                     "total_impact": float(row["total_impact"]),
                     "avg_variance": float(row["avg_variance"]),
                     "work_orders": row["work_orders"],
-                    "narrative": narrative  # ADD RICH NARRATIVE
+                    "narrative": narrative
                 })
         
         all_patterns = material_patterns + supplier_patterns
@@ -289,7 +306,7 @@ class CostAnalyzer:
                             "percentage": float(material_pct),
                             "variance_pct": float(material_pct),
                             "driver": "Material cost variance",
-                            "context": variance_context['material']  
+                            "context": variance_context['material']
                         },
                         "labor": {
                             "planned": float(row["labor_cost_planned"]),
@@ -299,7 +316,7 @@ class CostAnalyzer:
                             "variance_pct": float(labor_pct),
                             "hours_variance": float(row["actual_labor_hours"] - row["planned_labor_hours"]),
                             "driver": "Labor hours variance",
-                            "context": variance_context['labor']  # ADD THIS LINE
+                            "context": variance_context['labor']
                         }
                     },
                     "primary_driver": "material" if material_pct > 50 else "labor"
@@ -323,7 +340,7 @@ class CostAnalyzer:
         return {
             "status": "success",
             "predictions": predictions,
-            "patterns": all_patterns,  # Now includes rich narratives
+            "patterns": all_patterns,
             "total_impact": total_impact,
             "total_savings_opportunity": total_savings,
             "message": f"Found {len(predictions)} work orders with significant cost variances and {len(all_patterns)} patterns"

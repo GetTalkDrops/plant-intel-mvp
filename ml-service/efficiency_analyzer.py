@@ -36,7 +36,7 @@ class EfficiencyAnalyzer:
         ]
         return np.array([features])
     
-    def train_model(self, facility_id: int = 1, batch_id: str = None):
+    def train_model(self, facility_id: int = 1, batch_id: str = None, labor_rate: float = 200):
         """Train the efficiency prediction model"""
         query = self.supabase.table('work_orders')\
             .select('*')\
@@ -94,7 +94,7 @@ class EfficiencyAnalyzer:
             cost_eff = max(0, 100 - abs(avg_cost_var) / 100)
             
             features = [avg_labor_var, avg_cost_var, total_orders, labor_eff, cost_eff, consistency]
-            potential_savings = abs(avg_labor_var) * 200 * total_orders + abs(avg_cost_var) * 0.3 * total_orders
+            potential_savings = abs(avg_labor_var) * labor_rate * total_orders + abs(avg_cost_var) * 0.3 * total_orders
             
             X.append(features)
             y.append(potential_savings)
@@ -111,11 +111,18 @@ class EfficiencyAnalyzer:
         
         return True
     
-    def analyze_efficiency_patterns(self, facility_id: int = 1, batch_id: str = None) -> Dict:
+    def analyze_efficiency_patterns(self, facility_id: int = 1, batch_id: str = None, config: dict = None) -> Dict:
         """Analyze efficiency patterns with breakdown"""
         
+        # Extract config or use defaults
+        if config is None:
+            config = {}
+        
+        labor_rate = config.get('labor_rate_hourly', 200)
+        scrap_cost_per_unit = config.get('scrap_cost_per_unit', 75)
+        
         if not self.is_trained:
-            self.train_model(facility_id, batch_id)
+            self.train_model(facility_id, batch_id, labor_rate)
         
         query = self.supabase.table('work_orders')\
             .select('*')\
@@ -187,7 +194,11 @@ class EfficiencyAnalyzer:
                 continue
             
             try:
-                breakdown = self._calculate_efficiency_breakdown(data)
+                breakdown = self._calculate_efficiency_breakdown(
+                    data,
+                    labor_rate,
+                    scrap_cost_per_unit
+                )
                 
                 avg_labor_eff = np.mean(data['labor_efficiencies'])
                 avg_cost_eff = np.mean(data['cost_efficiencies'])
@@ -217,7 +228,12 @@ class EfficiencyAnalyzer:
             "total_savings_opportunity": int(total_savings)
         }
     
-    def _calculate_efficiency_breakdown(self, operation_data: dict) -> dict:
+    def _calculate_efficiency_breakdown(
+        self,
+        operation_data: dict,
+        labor_rate: float,
+        scrap_cost_per_unit: float
+    ) -> dict:
         """Calculate detailed efficiency breakdown"""
         
         avg_labor_var = np.mean(operation_data['labor_variances'])
@@ -226,9 +242,9 @@ class EfficiencyAnalyzer:
         quality_issues = operation_data['quality_issues']
         consistency = np.std(operation_data['labor_variances'])
         
-        labor_impact = int(max(0, avg_labor_var) * 200 * total_orders)
+        labor_impact = int(max(0, avg_labor_var) * labor_rate * total_orders)
         material_impact = int(max(0, avg_cost_var) * total_orders)
-        quality_impact = int(quality_issues * 75 * 5)
+        quality_impact = int(quality_issues * scrap_cost_per_unit * 5)
         
         total_savings = labor_impact + material_impact + quality_impact
         
