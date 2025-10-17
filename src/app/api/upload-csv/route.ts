@@ -1,3 +1,4 @@
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { csvStorageService } from "@/lib/csv-storage";
 import { isDemoAccount, DEMO_FACILITY_ID } from "@/lib/demo-account";
@@ -9,17 +10,24 @@ import {
 } from "@/lib/format-ml-response";
 
 export async function POST(request: NextRequest) {
-  try {
-    const {
-      mappedData,
-      mapping,
-      fileName,
-      userEmail,
-      headerSignature,
-      fileHash,
-    } = await request.json();
+  // Get authenticated user
+  const { userId } = await auth();
 
-    if (!mappedData || !mapping || !userEmail) {
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const user = await currentUser();
+  const userEmail = user?.emailAddresses[0]?.emailAddress;
+
+  if (!userEmail) {
+    return NextResponse.json({ error: "Email not found" }, { status: 400 });
+  }
+  try {
+    const { mappedData, mapping, fileName, headerSignature, fileHash } =
+      await request.json();
+
+    if (!mappedData || !mapping) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }

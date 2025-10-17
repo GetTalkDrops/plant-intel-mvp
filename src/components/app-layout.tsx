@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@clerk/nextjs";
+import { UserButton } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -31,7 +32,9 @@ export function AppLayout({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlant, setSelectedPlant] = useState("demo_plant");
-  const { user, signOut, loading } = useAuth();
+  const { user, isLoaded } = useUser();
+  const userEmail = user?.emailAddresses[0]?.emailAddress;
+
   // Initialize from localStorage if available
   const [recentSessions, setRecentSessions] = useState<ChatSession[]>(() => {
     if (typeof window !== "undefined") {
@@ -56,21 +59,21 @@ export function AppLayout({
 
   // Clear sessions from localStorage when user logs out
   useEffect(() => {
-    if (!user && !loading) {
+    if (!user && isLoaded) {
       localStorage.removeItem("recent_sessions");
       setRecentSessions([]);
     }
-  }, [user, loading]);
+  }, [user, isLoaded, userEmail]);
 
   // Debug auth state changes
   useEffect(() => {
     console.log(
       "AppLayout auth state changed:",
-      user ? user.email : "no user",
+      user ? userEmail : "no user",
       "loading:",
-      loading
+      !isLoaded
     );
-  }, [user, loading]);
+  }, [user, isLoaded, userEmail]);
 
   // For MVP: Only show Demo Plant until user adds plants via Settings
   const userPlants = [{ id: "demo_plant", name: "Demo Plant" }];
@@ -90,30 +93,30 @@ export function AppLayout({
   // Load recent sessions for sidebar - persistent across navigation
   useEffect(() => {
     console.log("🔍 Session loading effect triggered:", {
-      hasUser: !!user?.email,
-      userEmail: user?.email,
-      loading,
+      hasUser: !!userEmail,
+      userEmail: userEmail,
+      isLoaded,
       currentSessionsCount: recentSessions.length,
     });
 
-    if (!user?.email) {
-      console.log("⚠️ No user email, keeping existing sessions");
-      return; // CRITICAL: Don't touch recentSessions state at all
+    if (!userEmail) {
+      console.log("⚠️ No user email");
+      return;
     }
 
     // Only load if we don't have sessions yet OR user changed
-    if (recentSessions.length > 0 && recentSessions[0].user_id === user.email) {
+    if (recentSessions.length > 0 && recentSessions[0].user_id === userEmail) {
       console.log("✅ Sessions already loaded for this user");
       return;
     }
 
     const loadSessions = async () => {
-      console.log("📥 Loading sessions for", user.email);
+      console.log("📥 Loading sessions for", userEmail);
       try {
         const { data: sessions } = await supabase
           .from("chat_sessions")
           .select("*")
-          .eq("user_id", user.email)
+          .eq("user_id", userEmail)
           .order("updated_at", { ascending: false })
           .limit(10);
 
@@ -122,12 +125,12 @@ export function AppLayout({
           setRecentSessions(sessions);
         }
       } catch (error) {
-        console.error("❌ Failed to load sessions:", error);
+        console.error("Failed to load sessions:", error);
       }
     };
 
     loadSessions();
-  }, [user?.email]);
+  }, [userEmail]);
 
   // Debug recent sessions
   useEffect(() => {
@@ -137,14 +140,6 @@ export function AppLayout({
       recentSessions
     );
   }, [recentSessions]);
-
-  const handleUserProfileClick = () => {
-    if (user) {
-      router.push("/profile");
-    } else {
-      router.push("/login");
-    }
-  };
 
   const handleChatClick = () => {
     // Disable functionality but don't change appearance on landing page
@@ -156,7 +151,7 @@ export function AppLayout({
   };
 
   // Show loading state while auth is initializing
-  if (loading) {
+  if (!isLoaded) {
     return (
       <div className="flex h-screen bg-gray-100 items-center justify-center">
         <div className="text-gray-500">Loading...</div>
@@ -272,38 +267,31 @@ export function AppLayout({
             </button>
 
             <div className="mt-auto">
-              <button
-                onClick={handleUserProfileClick}
-                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                title={
-                  user
-                    ? `${user.email} - Click to manage account`
-                    : "Demo User - Click to sign in"
-                }
-                aria-label={user ? "Click to sign out" : "Click to sign in"}
-              >
-                <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                    user ? "bg-blue-100" : "bg-gray-300"
-                  }`}
-                >
-                  <svg
-                    className={`w-3 h-3 ${
-                      user ? "text-blue-600" : "text-gray-600"
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              <div className="flex items-center justify-center">
+                {user ? (
+                  <UserButton afterSignOutUrl="/" />
+                ) : (
+                  <button
+                    onClick={() => router.push("/sign-in")}
+                    className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                    title="Sign In"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                    />
-                  </svg>
-                </div>
-              </button>
+                    <svg
+                      className="w-5 h-5 text-gray-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -489,40 +477,24 @@ export function AppLayout({
 
             {/* User Profile Section */}
             <div className="p-3 border-t border-gray-200">
-              <button
-                onClick={handleUserProfileClick}
-                className="w-full flex items-center space-x-3 p-2 rounded hover:bg-gray-50 transition-colors"
-              >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    user ? "bg-blue-100" : "bg-gray-300"
-                  }`}
+              {user ? (
+                <UserButton
+                  afterSignOutUrl="/"
+                  appearance={{
+                    elements: {
+                      rootBox: "w-full",
+                      userButtonAvatarBox: "w-10 h-10",
+                    },
+                  }}
+                />
+              ) : (
+                <Button
+                  onClick={() => router.push("/sign-in")}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
                 >
-                  <svg
-                    className={`w-4 h-4 ${
-                      user ? "text-blue-600" : "text-gray-600"
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                    />
-                  </svg>
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-sm font-medium text-gray-900">
-                    {user ? user.email : "Demo User"}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {user ? "Click to manage account" : "Click to sign in"}
-                  </p>
-                </div>
-              </button>
+                  Sign In
+                </Button>
+              )}
             </div>
           </>
         )}

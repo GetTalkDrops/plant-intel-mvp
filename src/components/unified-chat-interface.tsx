@@ -12,7 +12,7 @@ import {
   type ManufacturingInsight,
 } from "@/lib/manufacturingIntelligence";
 import { processFileUpload, type ColumnMapping } from "@/lib/csvMapper";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@clerk/nextjs";
 import { InsightCard } from "@/lib/insight-types";
 import { SavingsTracker } from "./savings-tracker";
 import { useSearchParams } from "next/navigation";
@@ -79,7 +79,8 @@ type SavedMessage = {
 };
 
 export function UnifiedChatInterface() {
-  const { user } = useAuth();
+  const { user } = useUser();
+  const userEmail = user?.emailAddresses[0]?.emailAddress;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [queryCount, setQueryCount] = useState(0);
@@ -115,10 +116,9 @@ export function UnifiedChatInterface() {
 
   // Load saved session on mount
   useEffect(() => {
-    if (!user?.email) return;
+    if (!userEmail) return;
 
     const loadSession = async () => {
-
       // If no session param, clear messages and show landing page
       if (!stableSessionId) {
         setMessages([]);
@@ -137,7 +137,7 @@ export function UnifiedChatInterface() {
             .from("chat_sessions")
             .select("*")
             .eq("id", parseInt(sessionId))
-            .eq("user_id", user.email)
+            .eq("user_id", userEmail)
             .limit(1);
           sessions = data;
         } else {
@@ -264,7 +264,7 @@ export function UnifiedChatInterface() {
     };
 
     loadSession();
-  }, [user?.email, stableSessionId]);
+  }, [userEmail, stableSessionId]);
   const handleSendMessage = async (message: string) => {
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -285,7 +285,7 @@ export function UnifiedChatInterface() {
     try {
       const insight: ManufacturingInsight = await processManufacturingQuery(
         message,
-        user?.email,
+        userEmail,
         true
       );
 
@@ -331,7 +331,6 @@ export function UnifiedChatInterface() {
   };
 
   const handleFileUpload = async (file: File) => {
-
     const uploadMessage: ChatMessage = {
       id: "upload-" + Date.now().toString(),
       message: `Analyzing uploaded data: ${file.name}`,
@@ -368,23 +367,20 @@ export function UnifiedChatInterface() {
         );
       const sampleRows = allRows.slice(0, 5);
 
-
       const { generateHeaderSignature, generateFileHash } = await import(
         "@/lib/file-hash"
       );
       const headerSignature = generateHeaderSignature(headers);
       const fileHash = generateFileHash(text);
 
-
       // Check for saved mapping (for pre-fill, not auto-apply)
       const savedMappingResponse = await fetch(
         `/api/csv-mapping/saved?headerSignature=${encodeURIComponent(
           headerSignature
         )}&userEmail=${encodeURIComponent(
-          user?.email || "skinner.chris@gmail.com"
+          userEmail || "skinner.chris@gmail.com"
         )}`
       );
-
       let mappingsList: ColumnMapping[] = [];
       let unmappedList: string[] = [];
       let usingSavedMapping = false;
@@ -479,7 +475,6 @@ export function UnifiedChatInterface() {
     headerSignature?: string;
     fileHash?: string;
   }) => {
-
     try {
       const mappedData = pendingData.allRows.map((row: string[]) => {
         const rowData: Record<string, string> = {};
@@ -489,7 +484,6 @@ export function UnifiedChatInterface() {
         return rowData;
       });
 
-
       const uploadResponse = await fetch("/api/upload-csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -497,7 +491,7 @@ export function UnifiedChatInterface() {
           mappedData: mappedData,
           mapping: pendingData.mappings,
           fileName: pendingData.fileName,
-          userEmail: user?.email || "skinner.chris@gmail.com",
+          userEmail: userEmail || "skinner.chris@gmail.com",
           headerSignature: pendingData.headerSignature,
           fileHash: pendingData.fileHash,
         }),
@@ -506,7 +500,6 @@ export function UnifiedChatInterface() {
       const uploadResult = await uploadResponse.json();
 
       if (uploadResponse.ok && uploadResult.success) {
-
         const successMessage: ChatMessage = {
           id: "storage-success-" + Date.now().toString(),
           message: `Successfully imported ${uploadResult.recordsInserted} work orders from ${pendingData.fileName}`,
@@ -547,9 +540,7 @@ export function UnifiedChatInterface() {
           if (uploadResult.autoAnalysis?.cost?.totalSavingsOpportunity) {
             setCumulativeSavings(
               (prev) =>
-                prev +
-                uploadResult.upLoadResult.autoAnalysis.cost
-                  .totalSavingsOpportunity
+                prev + uploadResult.autoAnalysis.cost.totalSavingsOpportunity
             );
           }
 
@@ -653,7 +644,6 @@ export function UnifiedChatInterface() {
 
   const handleMappingConfirm = async (confirmedMappings: ColumnMapping[]) => {
     if (!pendingMapping) return;
-
 
     setShowMappingModal(false);
 
