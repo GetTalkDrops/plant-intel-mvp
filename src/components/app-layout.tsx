@@ -244,6 +244,7 @@ export function AppLayout({
               className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               title="Settings"
               aria-label="Settings"
+              onClick={() => router.push("/settings")}
             >
               <svg
                 className="w-5 h-5 text-gray-600"
@@ -432,7 +433,8 @@ export function AppLayout({
                 </Button>
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-sm h-9 text-gray-600"
+                  className="w-full justify-start text-sm h-9 text-gray-600 hover:bg-gray-100"
+                  onClick={() => router.push("/settings")}
                 >
                   Settings
                 </Button>
