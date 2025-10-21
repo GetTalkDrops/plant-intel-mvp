@@ -17,7 +17,15 @@ import { InsightCard } from "@/lib/insight-types";
 import { SavingsTracker } from "./savings-tracker";
 import { useSearchParams } from "next/navigation";
 import { useSession, type ChatMessage } from "@/hooks/useSession";
-import { supabase } from "@/lib/supabase";
+import {
+  createUserMessage,
+  createAssistantMessage,
+  createSystemMessage,
+  createUploadMessage,
+  createErrorMessage,
+  createUploadSuccessMessage,
+  createAnalysisMessage,
+} from "@/lib/utils/messageUtils";
 
 interface CSVMappingResponse {
   mappings?: ColumnMapping[];
@@ -40,46 +48,9 @@ interface PendingMapping {
   savedFileName?: string;
 }
 
-type SavedMessage = {
-  id: number;
-  session_id: number;
-  role: string;
-  content: string;
-  metadata: {
-    cost?: {
-      text: string;
-      cards?: InsightCard[];
-      followUps?: string[];
-    };
-    equipment?: {
-      text: string;
-      cards?: InsightCard[];
-      followUps?: string[];
-    };
-    quality?: {
-      text: string;
-      cards?: InsightCard[];
-      followUps?: string[];
-    };
-    efficiency?: {
-      text: string;
-      cards?: InsightCard[];
-      followUps?: string[];
-    };
-  } | null;
-  created_at: string;
-};
-
 export function UnifiedChatInterface() {
   const { user } = useUser();
   const userEmail = user?.emailAddresses[0]?.emailAddress;
-  const [isLoading, setIsLoading] = useState(false);
-  const [queryCount, setQueryCount] = useState(0);
-  const [showMappingModal, setShowMappingModal] = useState(false);
-  const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(
-    null
-  );
-  const [savingsTrackerDismissed, setSavingsTrackerDismissed] = useState(false);
   const searchParams = useSearchParams();
   const sessionParam = searchParams.get("session");
 
@@ -102,6 +73,15 @@ export function UnifiedChatInterface() {
     sessionId: stableSessionId,
   });
 
+  // Remaining component state
+  const [isLoading, setIsLoading] = useState(false);
+  const [queryCount, setQueryCount] = useState(0);
+  const [showMappingModal, setShowMappingModal] = useState(false);
+  const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(
+    null
+  );
+  const [savingsTrackerDismissed, setSavingsTrackerDismissed] = useState(false);
+
   // Landing page state
   const [landingChatInput, setLandingChatInput] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
@@ -111,16 +91,17 @@ export function UnifiedChatInterface() {
 
   const isEmpty = messages.length === 0 && !isLoading;
 
+  // Auto-scroll effect
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // ============================================================================
+  // HANDLERS
+  // ============================================================================
+
   const handleSendMessage = async (message: string) => {
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      message,
-      isUser: true,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
+    const userMessage = createUserMessage(message);
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
@@ -135,32 +116,19 @@ export function UnifiedChatInterface() {
         true
       );
 
-      const aiResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        message: insight.response,
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        cards: insight.cards,
-        followUps: insight.followUps,
-      };
+      const aiResponse = createAssistantMessage(
+        insight.response,
+        insight.cards,
+        insight.followUps
+      );
 
       setMessages((prev) => [...prev, aiResponse]);
     } catch (error) {
       console.error("Manufacturing intelligence error:", error);
 
-      const fallbackResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        message:
-          "I'm having trouble accessing the production data. Please try again or check your connection.",
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      };
+      const fallbackResponse = createSystemMessage(
+        "I'm having trouble accessing the production data. Please try again or check your connection."
+      );
 
       setMessages((prev) => [...prev, fallbackResponse]);
     } finally {
@@ -177,15 +145,7 @@ export function UnifiedChatInterface() {
   };
 
   const handleFileUpload = async (file: File) => {
-    const uploadMessage: ChatMessage = {
-      id: "upload-" + Date.now().toString(),
-      message: `Analyzing uploaded data: ${file.name}`,
-      isUser: true,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
+    const uploadMessage = createUploadMessage(file.name);
 
     setMessages((prev) => [...prev, uploadMessage]);
     setIsLoading(true);
@@ -298,20 +258,15 @@ export function UnifiedChatInterface() {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
 
-      const errorResponse: ChatMessage = {
-        id: "error-" + Date.now().toString(),
-        message: `Error processing file: ${errorMessage}`,
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      };
+      const errorResponse = createErrorMessage(
+        `Error processing file: ${errorMessage}`
+      );
 
       setMessages((prev) => [...prev, errorResponse]);
       setIsLoading(false);
     }
   };
+
   const handleMappingConfirmDirect = async (pendingData: {
     mappings: ColumnMapping[];
     unmappedColumns: string[];
@@ -346,15 +301,10 @@ export function UnifiedChatInterface() {
       const uploadResult = await uploadResponse.json();
 
       if (uploadResponse.ok && uploadResult.success) {
-        const successMessage: ChatMessage = {
-          id: "storage-success-" + Date.now().toString(),
-          message: `Successfully imported ${uploadResult.recordsInserted} work orders from ${pendingData.fileName}`,
-          isUser: false,
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        };
+        const successMessage = createUploadSuccessMessage(
+          uploadResult.recordsInserted,
+          pendingData.fileName
+        );
         setMessages((prev) => [...prev, successMessage]);
 
         // Process auto-analysis results
@@ -362,19 +312,15 @@ export function UnifiedChatInterface() {
           const analysis = uploadResult.autoAnalysis;
 
           // Executive summary message
-          const summaryMessage: ChatMessage = {
-            id: "summary-" + Date.now().toString(),
-            message: analysis.executiveSummary,
-            isUser: false,
-            timestamp: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          };
+          const summaryMessage = createAnalysisMessage(
+            analysis.executiveSummary,
+            "summary"
+          );
 
           setTimeout(() => {
             setMessages((prev) => [...prev, summaryMessage]);
           }, 500);
+
           if (uploadResult.autoAnalysis?.totalSavingsOpportunity) {
             setCumulativeSavings((prev) => {
               const newTotal =
@@ -392,36 +338,26 @@ export function UnifiedChatInterface() {
 
           // Cost analysis with cards
           if (analysis.cost?.cards && analysis.cost.cards.length > 0) {
-            const costMessage: ChatMessage = {
-              id: "cost-" + Date.now().toString(),
-              message: analysis.cost.text,
-              isUser: false,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              cards: analysis.cost.cards,
-              followUps: analysis.cost.followUps,
-            };
+            const costMessage = createAnalysisMessage(
+              analysis.cost.text,
+              "cost",
+              analysis.cost.cards,
+              analysis.cost.followUps
+            );
 
             setTimeout(() => {
               setMessages((prev) => [...prev, costMessage]);
             }, 1000);
           }
+
           // Equipment analysis - display even if no issues
           if (analysis.equipment) {
-            const equipmentMessage: ChatMessage = {
-              id: "equipment-" + Date.now().toString(),
-              message:
-                analysis.equipment.text || "No equipment data available.",
-              isUser: false,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              cards: analysis.equipment.cards,
-              followUps: analysis.equipment.followUps,
-            };
+            const equipmentMessage = createAnalysisMessage(
+              analysis.equipment.text || "No equipment data available.",
+              "equipment",
+              analysis.equipment.cards,
+              analysis.equipment.followUps
+            );
 
             setTimeout(() => {
               setMessages((prev) => [...prev, equipmentMessage]);
@@ -430,17 +366,12 @@ export function UnifiedChatInterface() {
 
           // Quality analysis - display even if no issues
           if (analysis.quality) {
-            const qualityMessage: ChatMessage = {
-              id: "quality-" + Date.now().toString(),
-              message: analysis.quality.text || "No quality data available.",
-              isUser: false,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              cards: analysis.quality.cards,
-              followUps: analysis.quality.followUps,
-            };
+            const qualityMessage = createAnalysisMessage(
+              analysis.quality.text || "No quality data available.",
+              "quality",
+              analysis.quality.cards,
+              analysis.quality.followUps
+            );
 
             setTimeout(() => {
               setMessages((prev) => [...prev, qualityMessage]);
@@ -449,18 +380,12 @@ export function UnifiedChatInterface() {
 
           // Efficiency analysis - display even if no issues
           if (analysis.efficiency) {
-            const efficiencyMessage: ChatMessage = {
-              id: "efficiency-" + Date.now().toString(),
-              message:
-                analysis.efficiency.text || "No efficiency data available.",
-              isUser: false,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              cards: analysis.efficiency.cards,
-              followUps: analysis.efficiency.followUps,
-            };
+            const efficiencyMessage = createAnalysisMessage(
+              analysis.efficiency.text || "No efficiency data available.",
+              "efficiency",
+              analysis.efficiency.cards,
+              analysis.efficiency.followUps
+            );
 
             setTimeout(() => {
               setMessages((prev) => [...prev, efficiencyMessage]);
@@ -473,15 +398,10 @@ export function UnifiedChatInterface() {
     } catch (error) {
       console.error("Upload error:", error);
 
-      const errorMessage: ChatMessage = {
-        id: "storage-error-" + Date.now().toString(),
-        message: "There was an error uploading your data. Please try again.",
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      };
+      const errorMessage = createSystemMessage(
+        "There was an error uploading your data. Please try again.",
+        "storage-error"
+      );
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
@@ -508,16 +428,10 @@ export function UnifiedChatInterface() {
     setShowMappingModal(false);
     setPendingMapping(null);
 
-    const cancelMessage: ChatMessage = {
-      id: "cancel-" + Date.now().toString(),
-      message:
-        "CSV import cancelled. You can upload a different file if needed.",
-      isUser: false,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
+    const cancelMessage = createSystemMessage(
+      "CSV import cancelled. You can upload a different file if needed.",
+      "cancel"
+    );
     setMessages((prev) => [...prev, cancelMessage]);
   };
 
@@ -555,6 +469,10 @@ export function UnifiedChatInterface() {
       handleFileUpload(file);
     }
   };
+
+  // ============================================================================
+  // JSX RENDERING
+  // ============================================================================
 
   if (isEmpty) {
     return (
@@ -605,52 +523,23 @@ export function UnifiedChatInterface() {
                     fill="currentColor"
                     className="text-blue-600"
                   />
-                  <circle
-                    cx="6"
-                    cy="6"
-                    r="1.5"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
-                  <circle
-                    cx="-6"
-                    cy="6"
-                    r="1.5"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
-                  <circle
-                    cx="6"
-                    cy="-6"
-                    r="1.5"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
-                  <circle
-                    cx="-6"
-                    cy="-6"
-                    r="1.5"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
                 </g>
                 <text
-                  x="50"
-                  y="37"
-                  fontFamily="Inter, sans-serif"
-                  fontSize="18"
-                  fontWeight="700"
+                  x="70"
+                  y="38"
+                  fontFamily="system-ui, -apple-system, sans-serif"
+                  fontSize="24"
+                  fontWeight="600"
                   fill="currentColor"
                   className="text-gray-900"
                 >
-                  PLANT INTEL
+                  PlantIntel
                 </text>
               </svg>
             </h1>
-            <div className="text-sm sm:text-base">
-              <p className="text-gray-600 mb-2">
-                Upload your production data to get intelligent manufacturing
-                insights
+            <div className="space-y-1">
+              <p className="text-sm sm:text-base font-medium text-gray-900">
+                Your Manufacturing Intelligence Assistant
               </p>
               <p className="text-xs sm:text-sm text-gray-500">
                 Supports upload of ERP exports, MES data, and manufacturing
