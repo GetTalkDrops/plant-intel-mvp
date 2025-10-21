@@ -16,16 +16,8 @@ import { useUser } from "@clerk/nextjs";
 import { InsightCard } from "@/lib/insight-types";
 import { SavingsTracker } from "./savings-tracker";
 import { useSearchParams } from "next/navigation";
+import { useSession, type ChatMessage } from "@/hooks/useSession";
 import { supabase } from "@/lib/supabase";
-
-type ChatMessage = {
-  id: string;
-  message: string;
-  isUser: boolean;
-  timestamp: string;
-  cards?: InsightCard[];
-  followUps?: string[];
-};
 
 interface CSVMappingResponse {
   mappings?: ColumnMapping[];
@@ -81,14 +73,12 @@ type SavedMessage = {
 export function UnifiedChatInterface() {
   const { user } = useUser();
   const userEmail = user?.emailAddresses[0]?.emailAddress;
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [queryCount, setQueryCount] = useState(0);
   const [showMappingModal, setShowMappingModal] = useState(false);
   const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(
     null
   );
-  const [cumulativeSavings, setCumulativeSavings] = useState(0);
   const [savingsTrackerDismissed, setSavingsTrackerDismissed] = useState(false);
   const searchParams = useSearchParams();
   const sessionParam = searchParams.get("session");
@@ -100,6 +90,18 @@ export function UnifiedChatInterface() {
     setStableSessionId(sessionParam);
   }, [sessionParam]);
 
+  // Use the session hook
+  const {
+    messages,
+    setMessages,
+    cumulativeSavings,
+    setCumulativeSavings,
+    isLoadingSession,
+  } = useSession({
+    userEmail,
+    sessionId: stableSessionId,
+  });
+
   // Landing page state
   const [landingChatInput, setLandingChatInput] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
@@ -109,162 +111,6 @@ export function UnifiedChatInterface() {
 
   const isEmpty = messages.length === 0 && !isLoading;
 
-  // Auto-scroll effect
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Load saved session on mount
-  useEffect(() => {
-    if (!userEmail) return;
-
-    const loadSession = async () => {
-      // If no session param, clear messages and show landing page
-      if (!stableSessionId) {
-        setMessages([]);
-        setCumulativeSavings(0);
-        return;
-      }
-
-      try {
-        // Check for session ID in URL
-        const sessionId = stableSessionId;
-
-        let sessions;
-        if (sessionId) {
-          // Load specific session from URL
-          const { data } = await supabase
-            .from("chat_sessions")
-            .select("*")
-            .eq("id", parseInt(sessionId))
-            .eq("user_id", userEmail)
-            .limit(1);
-          sessions = data;
-        } else {
-          // No session in URL = show empty landing page
-          return;
-        }
-
-        if (!sessions || sessions.length === 0) return;
-
-        const session = sessions[0];
-        // Load messages for this session
-        const { data: savedMessages } = await supabase
-          .from("chat_messages")
-          .select("*")
-          .eq("session_id", session.id)
-          .order("created_at", { ascending: true });
-        if (savedMessages && savedMessages.length > 0) {
-          const loadedMessages: ChatMessage[] = [];
-
-          savedMessages.forEach((msg: SavedMessage) => {
-            if (msg.role === "user") {
-              // User messages - add as-is
-              loadedMessages.push({
-                id: msg.id.toString(),
-                message: msg.content,
-                isUser: true,
-                timestamp: new Date(msg.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
-              });
-            } else if (msg.metadata) {
-              // Assistant message with metadata - split into separate messages
-              // Executive summary
-              loadedMessages.push({
-                id: msg.id.toString() + "-summary",
-                message: msg.content,
-                isUser: false,
-                timestamp: new Date(msg.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
-              });
-
-              // Cost analysis
-              if (msg.metadata.cost?.cards) {
-                loadedMessages.push({
-                  id: msg.id.toString() + "-cost",
-                  message: msg.metadata.cost.text,
-                  isUser: false,
-                  timestamp: new Date(msg.created_at).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                  cards: msg.metadata.cost.cards,
-                  followUps: msg.metadata.cost.followUps,
-                });
-              }
-
-              // Equipment analysis
-              if (msg.metadata.equipment) {
-                loadedMessages.push({
-                  id: msg.id.toString() + "-equipment",
-                  message: msg.metadata.equipment.text,
-                  isUser: false,
-                  timestamp: new Date(msg.created_at).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                  cards: msg.metadata.equipment.cards,
-                  followUps: msg.metadata.equipment.followUps,
-                });
-              }
-
-              // Quality analysis
-              if (msg.metadata.quality) {
-                loadedMessages.push({
-                  id: msg.id.toString() + "-quality",
-                  message: msg.metadata.quality.text,
-                  isUser: false,
-                  timestamp: new Date(msg.created_at).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                  cards: msg.metadata.quality.cards,
-                  followUps: msg.metadata.quality.followUps,
-                });
-              }
-
-              // Efficiency analysis
-              if (msg.metadata.efficiency) {
-                loadedMessages.push({
-                  id: msg.id.toString() + "-efficiency",
-                  message: msg.metadata.efficiency.text,
-                  isUser: false,
-                  timestamp: new Date(msg.created_at).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                  cards: msg.metadata.efficiency.cards,
-                  followUps: msg.metadata.efficiency.followUps,
-                });
-              }
-            } else {
-              // Plain assistant message without metadata
-              loadedMessages.push({
-                id: msg.id.toString(),
-                message: msg.content,
-                isUser: false,
-                timestamp: new Date(msg.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
-              });
-            }
-          });
-
-          setMessages(loadedMessages);
-          setCumulativeSavings(session.total_savings || 0);
-        }
-      } catch (error) {
-        console.error("Failed to load session:", error);
-      }
-    };
-
-    loadSession();
-  }, [userEmail, stableSessionId]);
   const handleSendMessage = async (message: string) => {
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
