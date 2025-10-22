@@ -14,7 +14,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ found: false });
     }
 
-    // Parse the incoming headers (now JSON array instead of hash)
     let incomingHeaders: string[];
     try {
       incomingHeaders = JSON.parse(headerSignature);
@@ -23,7 +22,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ found: false });
     }
 
-    // Get all mappings for this user
     const { data, error } = await supabase
       .from("csv_mappings")
       .select("*")
@@ -35,24 +33,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ found: false });
     }
 
-    // Find EXACT match (compare actual header arrays)
     for (const mapping of data) {
       try {
         const savedHeaders = JSON.parse(mapping.header_signature);
-        
-        // Check for exact match
+
         if (savedHeaders.length === incomingHeaders.length) {
           const sorted1 = [...savedHeaders].sort();
           const sorted2 = [...incomingHeaders].sort();
           const isExactMatch = sorted1.every((h, i) => h === sorted2[i]);
-          
+
           if (isExactMatch) {
             console.log("Found EXACT header match:", mapping.id);
             return NextResponse.json({
               found: true,
               mapping: mapping.mapping_config,
+              name: mapping.name,
               createdAt: mapping.created_at,
-              fileName: mapping.file_name || "previous file"
+              fileName: mapping.file_name || "previous file",
             });
           }
         }

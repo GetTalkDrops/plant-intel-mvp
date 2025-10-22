@@ -9,10 +9,6 @@ import {
   type ChatMessage,
 } from "@/lib/utils/messageUtils";
 
-// ============================================================================
-// TYPES
-// ============================================================================
-
 interface CSVMappingResponse {
   mappings?: ColumnMapping[];
   unmappedColumns?: string[];
@@ -32,11 +28,8 @@ export interface PendingMapping {
   fileHash?: string;
   usingSavedMapping?: boolean;
   savedFileName?: string;
+  savedMappingName?: string;
 }
-
-// ============================================================================
-// HOOK
-// ============================================================================
 
 interface UseFileUploadOptions {
   userEmail: string | undefined;
@@ -46,16 +39,14 @@ interface UseFileUploadOptions {
 }
 
 interface UseFileUploadReturn {
-  // Modal state
   showMappingModal: boolean;
   pendingMapping: PendingMapping | null;
-
-  // Drag and drop state
   isDragOver: boolean;
-
-  // Handlers
   handleFileUpload: (file: File) => Promise<void>;
-  handleMappingConfirm: (confirmedMappings: ColumnMapping[]) => Promise<void>;
+  handleMappingConfirm: (
+    confirmedMappings: ColumnMapping[],
+    name: string
+  ) => Promise<void>;
   handleMappingCancel: () => void;
   handleDragOver: (e: React.DragEvent) => void;
   handleDragLeave: (e: React.DragEvent) => void;
@@ -63,23 +54,6 @@ interface UseFileUploadReturn {
   handleFileInput: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-/**
- * Custom hook for managing file uploads and CSV mapping
- *
- * Handles:
- * - File parsing and validation
- * - CSV column mapping (AI suggestions + saved mappings)
- * - Drag-and-drop file upload
- * - Mapping modal state
- * - Auto-analysis results processing
- * - Savings tracking updates
- *
- * @param userEmail - Current user's email
- * @param setMessages - Function to update messages array
- * @param setIsLoading - Function to update loading state
- * @param setCumulativeSavings - Function to update cumulative savings
- * @returns File upload state and handlers
- */
 export function useFileUpload({
   userEmail,
   setMessages,
@@ -91,10 +65,6 @@ export function useFileUpload({
     null
   );
   const [isDragOver, setIsDragOver] = useState(false);
-
-  // ============================================================================
-  // FILE UPLOAD HANDLER
-  // ============================================================================
 
   const handleFileUpload = async (file: File) => {
     const uploadMessage = createUploadMessage(file.name);
@@ -110,7 +80,6 @@ export function useFileUpload({
         throw new Error("File is empty");
       }
 
-      // Detect delimiter and parse file
       const delimiter = lines[0].includes("\t")
         ? "\t"
         : lines[0].includes(";")
@@ -126,14 +95,12 @@ export function useFileUpload({
         );
       const sampleRows = allRows.slice(0, 5);
 
-      // Generate file signatures for saved mapping lookup
       const { generateHeaderSignature, generateFileHash } = await import(
         "@/lib/file-hash"
       );
       const headerSignature = generateHeaderSignature(headers);
       const fileHash = generateFileHash(text);
 
-      // Check for saved mapping (for pre-fill, not auto-apply)
       const savedMappingResponse = await fetch(
         `/api/csv-mapping/saved?headerSignature=${encodeURIComponent(
           headerSignature
@@ -141,12 +108,13 @@ export function useFileUpload({
           userEmail || "skinner.chris@gmail.com"
         )}`
       );
+
       let mappingsList: ColumnMapping[] = [];
       let unmappedList: string[] = [];
       let usingSavedMapping = false;
       let savedFileName = "";
+      let savedMappingName = "";
 
-      // Try to get saved mapping first (for exact match pre-fill)
       if (savedMappingResponse.ok) {
         const savedData = await savedMappingResponse.json();
         if (savedData.found) {
@@ -154,10 +122,10 @@ export function useFileUpload({
           unmappedList = [];
           usingSavedMapping = true;
           savedFileName = savedData.fileName || "previous file";
+          savedMappingName = savedData.name || "";
         }
       }
 
-      // If no saved mapping, get AI suggestions
       if (!usingSavedMapping) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -191,7 +159,6 @@ export function useFileUpload({
         }
       }
 
-      // ALWAYS show modal (with pre-filled mappings or AI suggestions)
       setPendingMapping({
         mappings: mappingsList,
         unmappedColumns: unmappedList,
@@ -203,6 +170,7 @@ export function useFileUpload({
         fileHash,
         usingSavedMapping,
         savedFileName,
+        savedMappingName,
       });
 
       setShowMappingModal(true);
@@ -221,10 +189,6 @@ export function useFileUpload({
     }
   };
 
-  // ============================================================================
-  // MAPPING CONFIRMATION HANDLER
-  // ============================================================================
-
   const handleMappingConfirmDirect = async (pendingData: {
     mappings: ColumnMapping[];
     unmappedColumns: string[];
@@ -233,6 +197,7 @@ export function useFileUpload({
     fileName: string;
     headerSignature?: string;
     fileHash?: string;
+    name: string;
   }) => {
     try {
       const mappedData = pendingData.allRows.map((row: string[]) => {
@@ -253,6 +218,7 @@ export function useFileUpload({
           userEmail: userEmail || "skinner.chris@gmail.com",
           headerSignature: pendingData.headerSignature,
           fileHash: pendingData.fileHash,
+          mappingName: pendingData.name,
         }),
       });
 
@@ -265,11 +231,9 @@ export function useFileUpload({
         );
         setMessages((prev) => [...prev, successMessage]);
 
-        // Process auto-analysis results
         if (uploadResult.autoAnalysis && !uploadResult.autoAnalysis.error) {
           const analysis = uploadResult.autoAnalysis;
 
-          // Executive summary message
           const summaryMessage = createAnalysisMessage(
             analysis.executiveSummary,
             "summary"
@@ -279,7 +243,6 @@ export function useFileUpload({
             setMessages((prev) => [...prev, summaryMessage]);
           }, 500);
 
-          // Update savings tracking
           if (uploadResult.autoAnalysis?.totalSavingsOpportunity) {
             setCumulativeSavings((prev) => {
               const newTotal =
@@ -287,7 +250,7 @@ export function useFileUpload({
               return newTotal;
             });
           }
-          // Extract savings from cost analysis
+
           if (uploadResult.autoAnalysis?.cost?.totalSavingsOpportunity) {
             setCumulativeSavings(
               (prev) =>
@@ -295,7 +258,6 @@ export function useFileUpload({
             );
           }
 
-          // Cost analysis with cards
           if (analysis.cost?.cards && analysis.cost.cards.length > 0) {
             const costMessage = createAnalysisMessage(
               analysis.cost.text,
@@ -309,7 +271,6 @@ export function useFileUpload({
             }, 1000);
           }
 
-          // Equipment analysis - display even if no issues
           if (analysis.equipment) {
             const equipmentMessage = createAnalysisMessage(
               analysis.equipment.text || "No equipment data available.",
@@ -323,7 +284,6 @@ export function useFileUpload({
             }, 1500);
           }
 
-          // Quality analysis - display even if no issues
           if (analysis.quality) {
             const qualityMessage = createAnalysisMessage(
               analysis.quality.text || "No quality data available.",
@@ -337,7 +297,6 @@ export function useFileUpload({
             }, 2000);
           }
 
-          // Efficiency analysis - display even if no issues
           if (analysis.efficiency) {
             const efficiencyMessage = createAnalysisMessage(
               analysis.efficiency.text || "No efficiency data available.",
@@ -366,7 +325,10 @@ export function useFileUpload({
     }
   };
 
-  const handleMappingConfirm = async (confirmedMappings: ColumnMapping[]) => {
+  const handleMappingConfirm = async (
+    confirmedMappings: ColumnMapping[],
+    name: string
+  ) => {
     if (!pendingMapping) return;
 
     setShowMappingModal(false);
@@ -379,12 +341,9 @@ export function useFileUpload({
       fileName: pendingMapping.fileName,
       headerSignature: pendingMapping.headerSignature,
       fileHash: pendingMapping.fileHash,
+      name,
     });
   };
-
-  // ============================================================================
-  // MAPPING CANCEL HANDLER
-  // ============================================================================
 
   const handleMappingCancel = () => {
     setShowMappingModal(false);
@@ -395,10 +354,6 @@ export function useFileUpload({
     );
     setMessages((prev) => [...prev, cancelMessage]);
   };
-
-  // ============================================================================
-  // DRAG AND DROP HANDLERS
-  // ============================================================================
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -434,10 +389,6 @@ export function useFileUpload({
       handleFileUpload(file);
     }
   };
-
-  // ============================================================================
-  // RETURN
-  // ============================================================================
 
   return {
     showMappingModal,

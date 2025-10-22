@@ -24,8 +24,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Email not found" }, { status: 400 });
   }
   try {
-    const { mappedData, mapping, fileName, headerSignature, fileHash } =
-      await request.json();
+    const {
+      mappedData,
+      mapping,
+      fileName,
+      headerSignature,
+      fileHash,
+      mappingName,
+    } = await request.json();
 
     // Create data upload record and chat session
     const { createClient } = await import("@supabase/supabase-js");
@@ -58,7 +64,8 @@ export async function POST(request: NextRequest) {
       mapping,
       fileName,
       headerSignature,
-      fileHash
+      fileHash,
+      mappingName
     );
 
     if (!result.success) {

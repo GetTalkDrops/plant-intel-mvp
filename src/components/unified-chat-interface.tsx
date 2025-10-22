@@ -29,42 +29,24 @@ import {
 // Phase 3: File upload hook
 import { useFileUpload, type PendingMapping } from "@/hooks/useFileUpload";
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
-
 export function UnifiedChatInterface() {
   const { user } = useUser();
   const userEmail = user?.emailAddresses[0]?.emailAddress;
   const searchParams = useSearchParams();
   const sessionParam = searchParams.get("session");
 
-  // Stabilize sessionParam to prevent excessive re-renders
   const [stableSessionId, setStableSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     setStableSessionId(sessionParam);
   }, [sessionParam]);
 
-  // ============================================================================
-  // LOCAL STATE (must be declared BEFORE hooks that use them)
-  // ============================================================================
-
   const [isLoading, setIsLoading] = useState(false);
   const [queryCount, setQueryCount] = useState(0);
   const [savingsTrackerDismissed, setSavingsTrackerDismissed] = useState(false);
-
-  // Landing page state
   const [landingChatInput, setLandingChatInput] = useState("");
-
-  // Auto-scroll ref
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // ============================================================================
-  // CUSTOM HOOKS (must come AFTER state they depend on)
-  // ============================================================================
-
-  // Phase 1: Use the session hook
   const {
     messages,
     setMessages,
@@ -76,7 +58,6 @@ export function UnifiedChatInterface() {
     sessionId: stableSessionId,
   });
 
-  // Phase 3: Use the file upload hook
   const {
     showMappingModal,
     pendingMapping,
@@ -95,24 +76,11 @@ export function UnifiedChatInterface() {
     setCumulativeSavings,
   });
 
-  // ============================================================================
-  // DERIVED STATE
-  // ============================================================================
-
   const isEmpty = messages.length === 0 && !isLoading;
 
-  // ============================================================================
-  // EFFECTS
-  // ============================================================================
-
-  // Auto-scroll effect
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  // ============================================================================
-  // HANDLERS
-  // ============================================================================
 
   const handleSendMessage = async (message: string) => {
     const userMessage = createUserMessage(message);
@@ -157,12 +125,6 @@ export function UnifiedChatInterface() {
       setLandingChatInput("");
     }
   };
-
-  // Note: All file upload handlers are now in useFileUpload hook
-
-  // ============================================================================
-  // JSX RENDERING
-  // ============================================================================
 
   if (isEmpty) {
     return (
@@ -229,17 +191,16 @@ export function UnifiedChatInterface() {
             </h1>
             <div className="space-y-1">
               <p className="text-sm sm:text-base font-medium text-gray-900">
-                Your Manufacturing Intelligence Assistant
+                Upload your work order data to get started
               </p>
-              <p className="text-xs sm:text-sm text-gray-500">
-                Supports upload of ERP exports, MES data, and manufacturing
-                reports
+              <p className="text-xs sm:text-sm text-gray-600">
+                Or ask a question about your production
               </p>
             </div>
           </div>
 
           <Card
-            className={`w-full max-w-2xl p-4 border-2 transition-all duration-200 ${
+            className={`w-full max-w-2xl p-4 sm:p-6 transition-all duration-200 ${
               isDragOver
                 ? "border-blue-500 bg-blue-50 shadow-lg"
                 : "border-gray-300 hover:border-gray-400 hover:shadow-md"
@@ -422,7 +383,8 @@ export function UnifiedChatInterface() {
   return (
     <div className="flex flex-col h-full bg-gray-50">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
+        {/* CRITICAL: Add w-full and overflow-x-hidden to prevent horizontal scroll */}
+        <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 py-3 sm:py-6 overflow-x-hidden">
           {cumulativeSavings > 0 && !savingsTrackerDismissed && (
             <SavingsTracker
               savings={cumulativeSavings}

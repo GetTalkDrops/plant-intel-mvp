@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@clerk/nextjs";
 import { UserButton } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type ChatSession = {
@@ -29,13 +29,13 @@ export function AppLayout({
   isLandingPage = false,
 }: AppLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlant, setSelectedPlant] = useState("demo_plant");
   const { user, isLoaded } = useUser();
   const userEmail = user?.emailAddresses[0]?.emailAddress;
 
-  // Initialize from localStorage if available
   const [recentSessions, setRecentSessions] = useState<ChatSession[]>(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("recent_sessions");
@@ -50,14 +50,12 @@ export function AppLayout({
     return [];
   });
 
-  // Persist to localStorage whenever sessions change
   useEffect(() => {
     if (recentSessions.length > 0) {
       localStorage.setItem("recent_sessions", JSON.stringify(recentSessions));
     }
   }, [recentSessions]);
 
-  // Clear sessions from localStorage when user logs out
   useEffect(() => {
     if (!user && isLoaded) {
       localStorage.removeItem("recent_sessions");
@@ -65,17 +63,6 @@ export function AppLayout({
     }
   }, [user, isLoaded, userEmail]);
 
-  // Debug auth state changes
-  useEffect(() => {
-    console.log(
-      "AppLayout auth state changed:",
-      user ? userEmail : "no user",
-      "loading:",
-      !isLoaded
-    );
-  }, [user, isLoaded, userEmail]);
-
-  // For MVP: Only show Demo Plant until user adds plants via Settings
   const userPlants = [{ id: "demo_plant", name: "Demo Plant" }];
 
   useEffect(() => {
@@ -90,28 +77,20 @@ export function AppLayout({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Load recent sessions for sidebar - persistent across navigation
   useEffect(() => {
-    console.log("🔍 Session loading effect triggered:", {
-      hasUser: !!userEmail,
-      userEmail: userEmail,
-      isLoaded,
-      currentSessionsCount: recentSessions.length,
-    });
-
-    if (!userEmail) {
-      console.log("⚠️ No user email");
-      return;
+    if (pathname === "/settings" && !isMobile) {
+      setIsDrawerOpen(true);
     }
+  }, [pathname, isMobile]);
 
-    // Only load if we don't have sessions yet OR user changed
+  useEffect(() => {
+    if (!userEmail) return;
+
     if (recentSessions.length > 0 && recentSessions[0].user_id === userEmail) {
-      console.log("✅ Sessions already loaded for this user");
       return;
     }
 
     const loadSessions = async () => {
-      console.log("📥 Loading sessions for", userEmail);
       try {
         const { data: sessions } = await supabase
           .from("chat_sessions")
@@ -120,7 +99,6 @@ export function AppLayout({
           .order("updated_at", { ascending: false })
           .limit(10);
 
-        console.log("✅ Loaded sessions:", sessions?.length);
         if (sessions && sessions.length > 0) {
           setRecentSessions(sessions);
         }
@@ -132,25 +110,13 @@ export function AppLayout({
     loadSessions();
   }, [userEmail]);
 
-  // Debug recent sessions
-  useEffect(() => {
-    console.log(
-      "🎨 Recent sessions state updated:",
-      recentSessions.length,
-      recentSessions
-    );
-  }, [recentSessions]);
-
   const handleChatClick = () => {
-    // Disable functionality but don't change appearance on landing page
     if (isLandingPage) return;
-
     if (onNewChat) {
       onNewChat();
     }
   };
 
-  // Show loading state while auth is initializing
   if (!isLoaded) {
     return (
       <div className="flex h-screen bg-gray-100 items-center justify-center">
@@ -161,7 +127,6 @@ export function AppLayout({
 
   return (
     <div className="flex h-screen bg-gray-100">
-      {/* Left Drawer */}
       <div
         className={`
           transition-all duration-300 overflow-hidden bg-white border-r border-gray-200 flex flex-col
@@ -176,7 +141,6 @@ export function AppLayout({
           }
         `}
       >
-        {/* Collapsed State - Icons Only (Desktop Only) */}
         {!isDrawerOpen && !isMobile && (
           <div className="flex flex-col items-center py-4 space-y-4 flex-1">
             <button
@@ -196,6 +160,27 @@ export function AppLayout({
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                />
+              </svg>
+            </button>
+
+            <button
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Chats"
+              aria-label="Chats"
+              onClick={() => router.push("/chats")}
+            >
+              <svg
+                className="w-5 h-5 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"
                 />
               </svg>
             </button>
@@ -244,6 +229,7 @@ export function AppLayout({
               className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               title="Settings"
               aria-label="Settings"
+              onClick={() => router.push("/settings")}
             >
               <svg
                 className="w-5 h-5 text-gray-600"
@@ -266,15 +252,16 @@ export function AppLayout({
               </svg>
             </button>
 
-            <div className="mt-auto">
-              <div className="flex items-center justify-center">
-                {user ? (
-                  <UserButton afterSignOutUrl="/" />
-                ) : (
+            <div className="flex-1"></div>
+
+            {user && (
+              <div className="mt-auto">
+                {!isDrawerOpen && (
                   <button
-                    onClick={() => router.push("/sign-in")}
                     className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                    title="Sign In"
+                    title="Expand sidebar"
+                    aria-label="Expand sidebar"
+                    onClick={() => setIsDrawerOpen(true)}
                   >
                     <svg
                       className="w-5 h-5 text-gray-600"
@@ -286,20 +273,18 @@ export function AppLayout({
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                        d="M9 5l7 7-7 7"
                       />
                     </svg>
                   </button>
                 )}
               </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* Full Drawer Content */}
         {isDrawerOpen && (
           <>
-            {/* Header with logo and plant selector */}
             <div className="pt-15 pb-4 px-4 sm:p-4 border-b border-gray-200">
               <div className="mb-4 flex justify-start">
                 <svg
@@ -388,13 +373,11 @@ export function AppLayout({
                 </svg>
               </div>
 
-              {/* Simple plant display - no dropdown until multiple plants exist */}
               <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2.5">
                 {user ? "Your Plant" : "Demo Plant"}
               </div>
             </div>
 
-            {/* Navigation */}
             <div className="p-3 border-b border-gray-200">
               <div className="space-y-1">
                 <Button
@@ -420,6 +403,18 @@ export function AppLayout({
 
                 <Button
                   variant="ghost"
+                  className={`w-full justify-start text-sm h-9 ${
+                    pathname === "/chats"
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-gray-600"
+                  }`}
+                  onClick={() => router.push("/chats")}
+                >
+                  Chats
+                </Button>
+
+                <Button
+                  variant="ghost"
                   className="w-full justify-start text-sm h-9 text-gray-600"
                 >
                   Alerts
@@ -432,18 +427,32 @@ export function AppLayout({
                 </Button>
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-sm h-9 text-gray-600"
+                  className={`w-full justify-start text-sm h-9 ${
+                    pathname === "/settings"
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-gray-600"
+                  }`}
+                  onClick={() => router.push("/settings")}
                 >
                   Settings
                 </Button>
               </div>
             </div>
 
-            {/* Recent Data section */}
             <div className="flex-1 p-3">
-              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                Recent Data
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Recent Data
+                </h3>
+                {recentSessions.length > 0 && (
+                  <button
+                    onClick={() => router.push("/chats")}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    View All
+                  </button>
+                )}
+              </div>
 
               {recentSessions.length > 0 ? (
                 <div className="space-y-2">
@@ -475,7 +484,6 @@ export function AppLayout({
               )}
             </div>
 
-            {/* User Profile Section */}
             <div className="p-3 border-t border-gray-200">
               {user ? (
                 <UserButton
@@ -500,7 +508,6 @@ export function AppLayout({
         )}
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col relative">
         <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0 relative z-50">
           <Button

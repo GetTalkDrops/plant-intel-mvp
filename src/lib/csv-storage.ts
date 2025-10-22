@@ -8,7 +8,7 @@ export interface CsvUploadResult {
   recordsInserted: number;
   facilityId: number;
   demoMode: boolean;
-  batchId?: string; // Add this
+  batchId?: string;
   error?: string;
 }
 
@@ -17,7 +17,7 @@ export interface WorkOrderRecord {
   facility_id: number;
   demo_mode: boolean;
   uploaded_csv_batch: string;
-  [key: string]: string | number | boolean | null; // Allow dynamic fields
+  [key: string]: string | number | boolean | null;
 }
 
 export class CsvStorageService {
@@ -27,20 +27,19 @@ export class CsvStorageService {
     confirmedMappings: CsvMapperMapping[],
     fileName: string,
     headerSignature?: string,
-    fileHash?: string
+    fileHash?: string,
+    mappingName?: string
   ): Promise<CsvUploadResult> {
     const isDemo = isDemoAccount(userEmail);
     const facilityId: number = isDemo ? DEMO_FACILITY_ID : 2;
     const batchId = `${Date.now()}_${fileName}`;
 
     try {
-      // Build a lookup map: sourceColumn -> targetField
       const mappingLookup: Record<string, string> = {};
       confirmedMappings.forEach((m) => {
         mappingLookup[m.sourceColumn] = m.targetField;
       });
 
-      // Transform each row dynamically based on confirmed mappings
       const workOrders: WorkOrderRecord[] = mappedData.map((row, index) => {
         const workOrder: WorkOrderRecord = {
           work_order_number: `UPLOAD-${batchId}-${index + 1}`,
@@ -49,7 +48,6 @@ export class CsvStorageService {
           uploaded_csv_batch: batchId,
         };
 
-        // Process each source column that has a mapping
         Object.entries(mappingLookup).forEach(([sourceColumn, targetField]) => {
           const sourceValue = row[sourceColumn];
 
@@ -58,7 +56,6 @@ export class CsvStorageService {
             sourceValue !== null &&
             sourceValue !== ""
           ) {
-            // Handle special fields
             if (targetField === "work_order_id") {
               workOrder.work_order_number = String(sourceValue);
             } else if (
@@ -67,13 +64,10 @@ export class CsvStorageService {
               targetField.includes("quantity") ||
               targetField.includes("scrapped")
             ) {
-              // Numeric fields
               workOrder[targetField] = this.parseNumber(sourceValue);
             } else if (targetField.includes("date")) {
-              // Date fields
               workOrder[targetField] = this.parseDate(sourceValue);
             } else {
-              // String fields
               workOrder[targetField] = String(sourceValue);
             }
           }
@@ -87,7 +81,6 @@ export class CsvStorageService {
         Object.keys(workOrders[0] || {})
       );
 
-      // Check if this exact file (same hash) was uploaded before
       if (fileHash) {
         const { data: existingBatch } = await supabase
           .from("csv_mappings")
@@ -99,7 +92,6 @@ export class CsvStorageService {
         if (existingBatch) {
           console.log("Exact file match found - replacing old data");
 
-          // Delete old work orders from this exact file
           await supabase
             .from("work_orders")
             .delete()
@@ -109,7 +101,6 @@ export class CsvStorageService {
         }
       }
 
-      // Store in Supabase
       const { data, error } = await supabase
         .from("work_orders")
         .insert(workOrders)
@@ -127,14 +118,14 @@ export class CsvStorageService {
         };
       }
 
-      // Store CSV mapping for reuse
       await this.storeCsvMapping(
         userEmail,
         facilityId,
         confirmedMappings,
         fileName,
         headerSignature,
-        fileHash
+        fileHash,
+        mappingName
       );
 
       return {
@@ -142,7 +133,7 @@ export class CsvStorageService {
         recordsInserted: workOrders.length,
         facilityId,
         demoMode: isDemo,
-        batchId, // Add this - it's already defined at the top of the method
+        batchId,
       };
     } catch (error) {
       console.error("CSV storage failed:", error);
@@ -162,10 +153,10 @@ export class CsvStorageService {
     mapping: CsvMapperMapping[],
     fileName: string,
     headerSignature?: string,
-    fileHash?: string
+    fileHash?: string,
+    mappingName?: string
   ): Promise<void> {
     try {
-      // Check if mapping with this header signature already exists
       if (headerSignature) {
         const { data: existing } = await supabase
           .from("csv_mappings")
@@ -175,13 +166,13 @@ export class CsvStorageService {
           .single();
 
         if (existing) {
-          // Update existing mapping
           await supabase
             .from("csv_mappings")
             .update({
               mapping_config: mapping,
               file_name: fileName,
               file_hash: fileHash,
+              name: mappingName,
               created_at: new Date().toISOString(),
             })
             .eq("id", existing.id);
@@ -191,7 +182,6 @@ export class CsvStorageService {
         }
       }
 
-      // Insert new mapping
       const { error } = await supabase.from("csv_mappings").insert({
         user_email: userEmail,
         facility_id: facilityId,
@@ -199,6 +189,7 @@ export class CsvStorageService {
         mapping_config: mapping,
         header_signature: headerSignature,
         file_hash: fileHash,
+        name: mappingName,
         created_at: new Date().toISOString(),
       });
 
