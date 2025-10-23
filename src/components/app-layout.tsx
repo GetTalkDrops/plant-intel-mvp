@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@clerk/nextjs";
 import { UserButton } from "@clerk/nextjs";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { PlantIntelLogo } from "./plant-intel-logo";
+import { ChatSessionItem } from "./chat-session-item";
 
 type ChatSession = {
   id: number;
@@ -30,6 +32,8 @@ export function AppLayout({
 }: AppLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentSessionId = searchParams.get("session");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlant, setSelectedPlant] = useState("demo_plant");
@@ -83,32 +87,32 @@ export function AppLayout({
     }
   }, [pathname, isMobile]);
 
-  useEffect(() => {
+  // Consolidated session loading function with useCallback to prevent unnecessary re-renders
+  const refreshSessions = useCallback(async () => {
     if (!userEmail) return;
 
-    if (recentSessions.length > 0 && recentSessions[0].user_id === userEmail) {
-      return;
-    }
+    try {
+      const { data: sessions } = await supabase
+        .from("chat_sessions")
+        .select("*")
+        .eq("user_id", userEmail)
+        .order("updated_at", { ascending: false })
+        .limit(10);
 
-    const loadSessions = async () => {
-      try {
-        const { data: sessions } = await supabase
-          .from("chat_sessions")
-          .select("*")
-          .eq("user_id", userEmail)
-          .order("updated_at", { ascending: false })
-          .limit(10);
-
-        if (sessions && sessions.length > 0) {
-          setRecentSessions(sessions);
-        }
-      } catch (error) {
-        console.error("Failed to load sessions:", error);
+      if (sessions && sessions.length > 0) {
+        setRecentSessions(sessions);
+      } else {
+        setRecentSessions([]);
       }
-    };
-
-    loadSessions();
+    } catch (error) {
+      console.error("Failed to load sessions:", error);
+    }
   }, [userEmail]);
+
+  // Load sessions on mount and when userEmail changes
+  useEffect(() => {
+    refreshSessions();
+  }, [refreshSessions]);
 
   const handleChatClick = () => {
     if (isLandingPage) return;
@@ -287,90 +291,7 @@ export function AppLayout({
           <>
             <div className="pt-15 pb-4 px-4 sm:p-4 border-b border-gray-200">
               <div className="mb-4 flex justify-start">
-                <svg
-                  width="150"
-                  height="45"
-                  viewBox="0 0 200 60"
-                  className="w-38 h-11"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <g transform="translate(20, 30)">
-                    <circle
-                      cx="0"
-                      cy="0"
-                      r="3"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="8"
-                      cy="0"
-                      r="2"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="-8"
-                      cy="0"
-                      r="2"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="0"
-                      cy="8"
-                      r="2"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="0"
-                      cy="-8"
-                      r="2"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="6"
-                      cy="6"
-                      r="1.5"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="-6"
-                      cy="6"
-                      r="1.5"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="6"
-                      cy="-6"
-                      r="1.5"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                    <circle
-                      cx="-6"
-                      cy="-6"
-                      r="1.5"
-                      fill="currentColor"
-                      className="text-blue-600"
-                    />
-                  </g>
-                  <text
-                    x="50"
-                    y="37"
-                    fontFamily="Inter, sans-serif"
-                    fontSize="18"
-                    fontWeight="700"
-                    fill="currentColor"
-                    className="text-gray-800"
-                  >
-                    PLANT INTEL
-                  </text>
-                </svg>
+                <PlantIntelLogo width={150} height={45} className="w-38 h-11" />
               </div>
 
               <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2.5">
@@ -417,7 +338,7 @@ export function AppLayout({
                   variant="ghost"
                   className="w-full justify-start text-sm h-9 text-gray-600"
                 >
-                  Alerts
+                  Trends
                 </Button>
                 <Button
                   variant="ghost"
@@ -455,21 +376,15 @@ export function AppLayout({
               </div>
 
               {recentSessions.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {recentSessions.map((session) => (
-                    <div
+                    <ChatSessionItem
                       key={session.id}
-                      className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer py-1 px-2 hover:bg-blue-50 rounded"
+                      session={session}
                       onClick={() => router.push(`/?session=${session.id}`)}
-                    >
-                      {session.title} -{" "}
-                      {new Date(session.updated_at).toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </div>
+                      onUpdate={refreshSessions}
+                      isActive={currentSessionId === String(session.id)}
+                    />
                   ))}
                 </div>
               ) : (

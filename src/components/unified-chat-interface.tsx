@@ -15,6 +15,7 @@ import { type ColumnMapping } from "@/lib/csvMapper";
 import { useUser } from "@clerk/nextjs";
 import { SavingsTracker } from "./savings-tracker";
 import { useSearchParams } from "next/navigation";
+import { PlantIntelLogo } from "./plant-intel-logo";
 
 // Phase 1: Session management hook
 import { useSession, type ChatMessage } from "@/hooks/useSession";
@@ -132,62 +133,11 @@ export function UnifiedChatInterface() {
         <div className="flex flex-col items-center justify-center h-full p-4 sm:p-6 max-w-4xl mx-auto">
           <div className="text-center mb-6 sm:mb-8">
             <h1 className="mb-2 sm:mb-3 flex justify-center">
-              <svg
-                width="240"
-                height="72"
-                viewBox="0 0 200 60"
+              <PlantIntelLogo
+                width={240}
+                height={72}
                 className="w-60 h-18 sm:w-72 sm:h-22"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <g transform="translate(20, 30)">
-                  <circle
-                    cx="0"
-                    cy="0"
-                    r="3"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
-                  <circle
-                    cx="8"
-                    cy="0"
-                    r="2"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
-                  <circle
-                    cx="-8"
-                    cy="0"
-                    r="2"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
-                  <circle
-                    cx="0"
-                    cy="8"
-                    r="2"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
-                  <circle
-                    cx="0"
-                    cy="-8"
-                    r="2"
-                    fill="currentColor"
-                    className="text-blue-600"
-                  />
-                </g>
-                <text
-                  x="70"
-                  y="38"
-                  fontFamily="system-ui, -apple-system, sans-serif"
-                  fontSize="24"
-                  fontWeight="600"
-                  fill="currentColor"
-                  className="text-gray-900"
-                >
-                  PlantIntel
-                </text>
-              </svg>
+              />
             </h1>
             <div className="space-y-1">
               <p className="text-sm sm:text-base font-medium text-gray-900">
