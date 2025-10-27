@@ -1,7 +1,7 @@
 // src/hooks/useSession.ts
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { InsightCard } from "@/lib/insight-types";
+import { InsightCard } from "@/lib/analytics/insight-types";
 
 // ============================================================================
 // TYPES

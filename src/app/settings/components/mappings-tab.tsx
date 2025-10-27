@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Trash2, Calendar, Pencil, Check, X, Edit } from "lucide-react";
 import { EditMappingModal } from "@/components/edit-mapping-modal";
-import { type ColumnMapping } from "@/lib/csvMapper";
+import { type ColumnMapping } from "@/lib/csv/csvMapper";
 
 interface MappingField {
   sourceColumn: string;

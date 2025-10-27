@@ -3,8 +3,8 @@ import { useState } from "react";
 import {
   InsightCard as InsightCardType,
   InsightItem,
-} from "@/lib/insight-types";
-import { getInsightIcon } from "@/lib/insight-icons";
+} from "@/lib/analytics/insight-types";
+import { getInsightIcon } from "@/lib/analytics/insight-icons";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface InsightCardProps {

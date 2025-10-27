@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin } from "./supabase";
+import { supabase, supabaseAdmin } from "../supabase";
 
 export interface CustomerProfile {
   id: string;

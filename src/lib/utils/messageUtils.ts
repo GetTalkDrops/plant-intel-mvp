@@ -1,5 +1,5 @@
 // src/lib/utils/messageUtils.ts
-import { InsightCard } from "@/lib/insight-types";
+import { InsightCard } from "@/lib/analytics/insight-types";
 
 // ============================================================================
 // TYPES

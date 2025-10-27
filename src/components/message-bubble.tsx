@@ -1,5 +1,5 @@
 // src/components/message-bubble.tsx
-import { InsightCard as InsightCardType } from "@/lib/insight-types";
+import { InsightCard as InsightCardType } from "@/lib/analytics/insight-types";
 import { InsightCard } from "./insight-card";
 
 interface MessageBubbleProps {

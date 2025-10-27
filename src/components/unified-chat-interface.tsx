@@ -10,8 +10,8 @@ import CsvMappingModal from "./csv-mapping-modal";
 import {
   processManufacturingQuery,
   type ManufacturingInsight,
-} from "@/lib/manufacturingIntelligence";
-import { type ColumnMapping } from "@/lib/csvMapper";
+} from "@/lib/analytics/manufacturingIntelligence";
+import { type ColumnMapping } from "@/lib/csv/csvMapper";
 import { useUser } from "@clerk/nextjs";
 import { SavingsTracker } from "./savings-tracker";
 import { useSearchParams } from "next/navigation";

@@ -1,5 +1,5 @@
 "use client";
-import { TARGET_FIELDS, type TargetField } from "../lib/field-options";
+import { TARGET_FIELDS, type TargetField } from "@/lib/utils/field-options";
 
 interface MappingRowProps {
   sourceColumn: string;

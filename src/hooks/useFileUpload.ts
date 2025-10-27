@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react";
-import { type ColumnMapping } from "@/lib/csvMapper";
+import { type ColumnMapping } from "@/lib/csv/csvMapper";
 import { type ChatMessage } from "@/hooks/useSession";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";

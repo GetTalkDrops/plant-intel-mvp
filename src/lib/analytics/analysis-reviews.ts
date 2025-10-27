@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "../supabase";
 
 // ML Results types
 export interface VarianceBreakdown {

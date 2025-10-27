@@ -1,5 +1,5 @@
 // src/lib/format-ml-response.ts
-import { InsightCard, AssistantMessage } from "./insight-types";
+import { InsightCard, AssistantMessage } from "../analytics/insight-types";
 
 // Pattern Narrative Interfaces
 interface PatternNarrative {

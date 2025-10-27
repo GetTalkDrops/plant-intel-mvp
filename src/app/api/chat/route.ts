@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isDemoAccount } from "@/lib/demo-account";
+import { isDemoAccount } from "@/lib/crm/demo-account";
 
 export async function POST(request: NextRequest) {
   try {

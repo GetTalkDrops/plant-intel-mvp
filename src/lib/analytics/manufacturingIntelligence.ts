@@ -1,10 +1,10 @@
-import { enhanceMLResponse } from "./aiService";
+import { enhanceMLResponse } from "../ai/aiService";
 import {
   formatCostAnalysisResponse,
   formatEquipmentResponse,
   formatQualityResponse,
   formatEfficiencyResponse,
-} from "./format-ml-response";
+} from "../ai/format-ml-response";
 import { InsightCard } from "./insight-types";
 
 export type ChatMessage = {

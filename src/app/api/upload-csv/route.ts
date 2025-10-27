@@ -1,13 +1,13 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { csvStorageService } from "@/lib/csv-storage";
-import { isDemoAccount, DEMO_FACILITY_ID } from "@/lib/demo-account";
+import { csvStorageService } from "@/lib/csv/csv-storage";
+import { isDemoAccount, DEMO_FACILITY_ID } from "@/lib/crm/demo-account";
 import {
   formatCostAnalysisResponse,
   formatEquipmentResponse,
   formatQualityResponse,
   formatEfficiencyResponse,
-} from "@/lib/format-ml-response";
+} from "@/lib/ai/format-ml-response";
 
 export async function POST(request: NextRequest) {
   // Get authenticated user

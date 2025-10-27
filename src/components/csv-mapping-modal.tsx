@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { type ColumnMapping } from "@/lib/csvMapper";
+import { type ColumnMapping } from "@/lib/csv/csvMapper";
 import { MappingRow } from "./mapping-row";
 
 interface MappingModalProps {
