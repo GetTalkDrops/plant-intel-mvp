@@ -1,57 +1,31 @@
-// src/hooks/useFileUpload.ts
+/**
+ * File Upload Hook - Integrated with Chat Interface
+ *
+ * Provides drag-and-drop, file upload, and CSV mapping workflow
+ * Backend handles all parsing, mapping, validation, and storage
+ */
+
 import { useState } from "react";
 import { type ColumnMapping } from "@/lib/csvMapper";
-import {
-  createUploadMessage,
-  createErrorMessage,
-  createUploadSuccessMessage,
-  createAnalysisMessage,
-  type ChatMessage,
-} from "@/lib/utils/messageUtils";
+import { type ChatMessage } from "@/hooks/useSession";
 
-interface CSVMappingResponse {
-  mappings?: ColumnMapping[];
-  unmappedColumns?: string[];
-  requiredFieldsCovered?: string[];
-  missingRequiredFields?: string[];
-  confidence?: number;
-}
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface PendingMapping {
+  fileName: string;
+  file: File;
   mappings: ColumnMapping[];
   unmappedColumns: string[];
-  sampleRows: string[][];
-  allRows: string[][];
-  headers: string[];
-  fileName: string;
-  headerSignature?: string;
-  fileHash?: string;
   usingSavedMapping?: boolean;
   savedFileName?: string;
   savedMappingName?: string;
 }
 
-interface UseFileUploadOptions {
+interface UseFileUploadProps {
   userEmail: string | undefined;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  setIsLoading: (loading: boolean) => void;
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setCumulativeSavings: React.Dispatch<React.SetStateAction<number>>;
-}
-
-interface UseFileUploadReturn {
-  showMappingModal: boolean;
-  pendingMapping: PendingMapping | null;
-  isDragOver: boolean;
-  handleFileUpload: (file: File) => Promise<void>;
-  handleMappingConfirm: (
-    confirmedMappings: ColumnMapping[],
-    name: string
-  ) => Promise<void>;
-  handleMappingCancel: () => void;
-  handleDragOver: (e: React.DragEvent) => void;
-  handleDragLeave: (e: React.DragEvent) => void;
-  handleDrop: (e: React.DragEvent) => void;
-  handleFileInput: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export function useFileUpload({
@@ -59,302 +33,220 @@ export function useFileUpload({
   setMessages,
   setIsLoading,
   setCumulativeSavings,
-}: UseFileUploadOptions): UseFileUploadReturn {
+}: UseFileUploadProps) {
   const [showMappingModal, setShowMappingModal] = useState(false);
   const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(
     null
   );
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const handleFileUpload = async (file: File) => {
-    const uploadMessage = createUploadMessage(file.name);
-
-    setMessages((prev) => [...prev, uploadMessage]);
-    setIsLoading(true);
+  /**
+   * Step 1: Analyze file and get mapping suggestions from backend
+   */
+  const analyzeFile = async (file: File): Promise<boolean> => {
+    if (!userEmail) {
+      console.error("User email not available");
+      return false;
+    }
 
     try {
-      const text = await file.text();
-      const lines = text.trim().split("\n");
+      const formData = new FormData();
+      formData.append("file", file);
 
-      if (lines.length === 0) {
-        throw new Error("File is empty");
+      const response = await fetch(`${API_BASE}/upload/csv/analyze`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+      console.log("Analyze result:", result);
+
+      if (!result.success) {
+        // Show error message in chat
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            message: `Failed to analyze CSV: ${
+              result.error || "Unknown error"
+            }`,
+            isUser: false,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        return false;
       }
 
-      const delimiter = lines[0].includes("\t")
-        ? "\t"
-        : lines[0].includes(";")
-        ? ";"
-        : ",";
-      const headers = lines[0]
-        .split(delimiter)
-        .map((h) => h.trim().replace(/"/g, ""));
-      const allRows = lines
-        .slice(1)
-        .map((line) =>
-          line.split(delimiter).map((cell) => cell.trim().replace(/"/g, ""))
-        );
-      const sampleRows = allRows.slice(0, 5);
+      // Convert backend format to ColumnMapping format for the modal
+      const mappings: ColumnMapping[] = Object.entries(
+        result.mapping_suggestions as Record<string, string>
+      ).map(([targetField, sourceColumn]) => ({
+        sourceColumn,
+        targetField,
+        confidence: 0.9,
+        dataType: inferDataType(targetField),
+      }));
 
-      const { generateHeaderSignature, generateFileHash } = await import(
-        "@/lib/file-hash"
-      );
-      const headerSignature = generateHeaderSignature(headers);
-      const fileHash = generateFileHash(text);
+      console.log("Converted mappings:", mappings);
 
-      const savedMappingResponse = await fetch(
-        `/api/csv-mapping/saved?headerSignature=${encodeURIComponent(
-          headerSignature
-        )}&userEmail=${encodeURIComponent(
-          userEmail || "skinner.chris@gmail.com"
-        )}`
-      );
-
-      let mappingsList: ColumnMapping[] = [];
-      let unmappedList: string[] = [];
-      let usingSavedMapping = false;
-      let savedFileName = "";
-      let savedMappingName = "";
-
-      if (savedMappingResponse.ok) {
-        const savedData = await savedMappingResponse.json();
-        if (savedData.found) {
-          mappingsList = savedData.mapping;
-          unmappedList = [];
-          usingSavedMapping = true;
-          savedFileName = savedData.fileName || "previous file";
-          savedMappingName = savedData.name || "";
-        }
-      }
-
-      if (!usingSavedMapping) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-        try {
-          const mappingResponse = await fetch("/api/csv-mapping", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ headers, sampleRows }),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (!mappingResponse.ok) {
-            throw new Error(`Mapping service error: ${mappingResponse.status}`);
-          }
-
-          const mapping = (await mappingResponse.json()) as CSVMappingResponse;
-          mappingsList = mapping.mappings || [];
-          unmappedList = mapping.unmappedColumns || [];
-        } catch (apiError: unknown) {
-          clearTimeout(timeoutId);
-          const errorMessage =
-            apiError instanceof Error ? apiError.message : "Unknown API error";
-          if (apiError instanceof Error && apiError.name === "AbortError") {
-            throw new Error("API call timed out after 30 seconds");
-          } else {
-            throw new Error(`Mapping API error: ${errorMessage}`);
-          }
-        }
-      }
-
+      // Set up pending mapping and show modal
       setPendingMapping({
-        mappings: mappingsList,
-        unmappedColumns: unmappedList,
-        sampleRows: sampleRows,
-        allRows: allRows,
-        headers: headers,
         fileName: file.name,
-        headerSignature,
-        fileHash,
-        usingSavedMapping,
-        savedFileName,
-        savedMappingName,
+        file,
+        mappings,
+        unmappedColumns: result.unmapped_columns || [],
+        usingSavedMapping: false,
       });
 
       setShowMappingModal(true);
-      setIsLoading(false);
-    } catch (error: unknown) {
-      console.error("File upload error:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-
-      const errorResponse = createErrorMessage(
-        `Error processing file: ${errorMessage}`
-      );
-
-      setMessages((prev) => [...prev, errorResponse]);
-      setIsLoading(false);
+      return true;
+    } catch (error) {
+      console.error("File analysis error:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          message: `Error analyzing file: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+          isUser: false,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      return false;
     }
   };
 
-  const handleMappingConfirmDirect = async (pendingData: {
-    mappings: ColumnMapping[];
-    unmappedColumns: string[];
-    allRows: string[][];
-    headers: string[];
-    fileName: string;
-    headerSignature?: string;
-    fileHash?: string;
-    name: string;
-  }) => {
+  /**
+   * Step 2: Upload file with confirmed mapping
+   */
+  const uploadFileToBackend = async (
+    file: File,
+    confirmedMappings: ColumnMapping[]
+  ) => {
+    if (!userEmail) {
+      console.error("User email not available");
+      return;
+    }
+
+    setIsLoading(true);
+
     try {
-      const mappedData = pendingData.allRows.map((row: string[]) => {
-        const rowData: Record<string, string> = {};
-        pendingData.headers.forEach((header: string, index: number) => {
-          rowData[header] = row[index] || "";
-        });
-        return rowData;
-      });
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("user_email", userEmail);
 
-      const uploadResponse = await fetch("/api/upload-csv", {
+      // Convert ColumnMapping[] to backend format
+      const mappingDict: Record<string, string> = {};
+      confirmedMappings.forEach((m) => {
+        mappingDict[m.targetField] = m.sourceColumn;
+      });
+      formData.append("confirmed_mapping", JSON.stringify(mappingDict));
+
+      const response = await fetch(`${API_BASE}/upload/csv`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mappedData: mappedData,
-          mapping: pendingData.mappings,
-          fileName: pendingData.fileName,
-          userEmail: userEmail || "skinner.chris@gmail.com",
-          headerSignature: pendingData.headerSignature,
-          fileHash: pendingData.fileHash,
-          mappingName: pendingData.name,
-        }),
+        body: formData,
       });
 
-      const uploadResult = await uploadResponse.json();
+      const result = await response.json();
 
-      if (uploadResponse.ok && uploadResult.success) {
-        const successMessage = createUploadSuccessMessage(
-          uploadResult.recordsInserted,
-          pendingData.fileName
-        );
+      if (result.success) {
+        // Success message - simplified without cards
+        const successMessage: ChatMessage = {
+          id: Date.now().toString(),
+          message: ` **Upload Successful!**\n\n• Uploaded ${result.data.rows_inserted} work orders\n• File: ${file.name}\n• Mapping confidence: ${result.data.confidence}%\n\nYou can now query this data!`,
+          isUser: false,
+          timestamp: new Date().toISOString(),
+        };
+
         setMessages((prev) => [...prev, successMessage]);
 
-        if (uploadResult.autoAnalysis && !uploadResult.autoAnalysis.error) {
-          const analysis = uploadResult.autoAnalysis;
-
-          const summaryMessage = createAnalysisMessage(
-            analysis.executiveSummary,
-            "summary"
-          );
-
-          setTimeout(() => {
-            setMessages((prev) => [...prev, summaryMessage]);
-          }, 500);
-
-          if (uploadResult.autoAnalysis?.totalSavingsOpportunity) {
-            setCumulativeSavings((prev) => {
-              const newTotal =
-                prev + uploadResult.autoAnalysis.totalSavingsOpportunity;
-              return newTotal;
-            });
-          }
-
-          if (uploadResult.autoAnalysis?.cost?.totalSavingsOpportunity) {
-            setCumulativeSavings(
-              (prev) =>
-                prev + uploadResult.autoAnalysis.cost.totalSavingsOpportunity
-            );
-          }
-
-          if (analysis.cost?.cards && analysis.cost.cards.length > 0) {
-            const costMessage = createAnalysisMessage(
-              analysis.cost.text,
-              "cost",
-              analysis.cost.cards,
-              analysis.cost.followUps
-            );
-
-            setTimeout(() => {
-              setMessages((prev) => [...prev, costMessage]);
-            }, 1000);
-          }
-
-          if (analysis.equipment) {
-            const equipmentMessage = createAnalysisMessage(
-              analysis.equipment.text || "No equipment data available.",
-              "equipment",
-              analysis.equipment.cards,
-              analysis.equipment.followUps
-            );
-
-            setTimeout(() => {
-              setMessages((prev) => [...prev, equipmentMessage]);
-            }, 1500);
-          }
-
-          if (analysis.quality) {
-            const qualityMessage = createAnalysisMessage(
-              analysis.quality.text || "No quality data available.",
-              "quality",
-              analysis.quality.cards,
-              analysis.quality.followUps
-            );
-
-            setTimeout(() => {
-              setMessages((prev) => [...prev, qualityMessage]);
-            }, 2000);
-          }
-
-          if (analysis.efficiency) {
-            const efficiencyMessage = createAnalysisMessage(
-              analysis.efficiency.text || "No efficiency data available.",
-              "efficiency",
-              analysis.efficiency.cards,
-              analysis.efficiency.followUps
-            );
-
-            setTimeout(() => {
-              setMessages((prev) => [...prev, efficiencyMessage]);
-            }, 2500);
-          }
+        // Update savings tracker if applicable
+        if (result.data.savings) {
+          setCumulativeSavings((prev) => prev + result.data.savings);
         }
       } else {
-        throw new Error(uploadResult.error || "Upload failed");
+        // Error message
+        const errorMessage: ChatMessage = {
+          id: Date.now().toString(),
+          message: `**Upload Failed**\n\n${
+            result.error || "Unknown error"
+          }\n\n${result.technical_details || ""}`,
+          isUser: false,
+          timestamp: new Date().toISOString(),
+        };
+
+        setMessages((prev) => [...prev, errorMessage]);
       }
     } catch (error) {
       console.error("Upload error:", error);
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        message: `**Upload Error**\n\n${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+        isUser: false,
+        timestamp: new Date().toISOString(),
+      };
 
-      const errorMessage = createErrorMessage(
-        "There was an error uploading your data. Please try again."
-      );
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleMappingConfirm = async (
-    confirmedMappings: ColumnMapping[],
-    name: string
-  ) => {
-    if (!pendingMapping) return;
+  /**
+   * Handle file upload (from file input or drag-drop)
+   */
+  const handleFileUpload = async (file: File) => {
+    // Show "analyzing" message
+    const analyzingMessage: ChatMessage = {
+      id: Date.now().toString(),
+      message: `Analyzing ${file.name}...`,
+      isUser: false,
+      timestamp: new Date().toISOString(),
+    };
 
-    setShowMappingModal(false);
+    setMessages((prev) => [...prev, analyzingMessage]);
 
-    await handleMappingConfirmDirect({
-      mappings: confirmedMappings,
-      unmappedColumns: pendingMapping.unmappedColumns,
-      allRows: pendingMapping.allRows,
-      headers: pendingMapping.headers,
-      fileName: pendingMapping.fileName,
-      headerSignature: pendingMapping.headerSignature,
-      fileHash: pendingMapping.fileHash,
-      name,
-    });
+    await analyzeFile(file);
   };
 
+  /**
+   * Handle mapping confirmation
+   */
+  const handleMappingConfirm = async (
+    confirmedMappings: ColumnMapping[],
+    mappingName: string
+  ) => {
+    setShowMappingModal(false);
+
+    if (pendingMapping) {
+      await uploadFileToBackend(pendingMapping.file, confirmedMappings);
+      setPendingMapping(null);
+    }
+  };
+
+  /**
+   * Handle mapping cancellation
+   */
   const handleMappingCancel = () => {
     setShowMappingModal(false);
     setPendingMapping(null);
 
-    const cancelMessage = createErrorMessage(
-      "CSV import cancelled. You can upload a different file if needed."
-    );
+    const cancelMessage: ChatMessage = {
+      id: Date.now().toString(),
+      message: "Upload cancelled.",
+      isUser: false,
+      timestamp: new Date().toISOString(),
+    };
+
     setMessages((prev) => [...prev, cancelMessage]);
   };
 
+  /**
+   * Drag and drop handlers
+   */
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -369,20 +261,15 @@ export function useFileUpload({
     e.preventDefault();
     setIsDragOver(false);
 
-    const files = Array.from(e.dataTransfer.files);
-    const dataFile = files.find(
-      (file) =>
-        file.name.endsWith(".csv") ||
-        file.name.endsWith(".txt") ||
-        file.name.endsWith(".dat") ||
-        file.type === "text/csv"
-    );
-
-    if (dataFile) {
-      handleFileUpload(dataFile);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      handleFileUpload(file);
     }
   };
 
+  /**
+   * File input handler
+   */
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -402,4 +289,24 @@ export function useFileUpload({
     handleDrop,
     handleFileInput,
   };
+}
+
+/**
+ * Helper: Infer data type from field name
+ */
+function inferDataType(
+  fieldName: string
+): "string" | "number" | "date" | "boolean" {
+  if (
+    fieldName.includes("cost") ||
+    fieldName.includes("hours") ||
+    fieldName.includes("quantity") ||
+    fieldName.includes("scrapped")
+  ) {
+    return "number";
+  }
+  if (fieldName.includes("date") || fieldName.includes("period")) {
+    return "date";
+  }
+  return "string";
 }

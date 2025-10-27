@@ -6,8 +6,12 @@ const anthropic = new Anthropic({
 });
 
 export async function POST(request: NextRequest) {
+  let body;
+
   try {
-    const { mlResponse, userQuery, costImpact } = await request.json();
+    // Read body ONCE and store it
+    body = await request.json();
+    const { mlResponse, userQuery, costImpact } = body;
 
     const response = await anthropic.messages.create({
       model: "claude-3-5-haiku-20241022",
@@ -61,7 +65,8 @@ Format your response professionally with bullet points where appropriate. Keep u
   } catch (error) {
     console.error("Claude enhancement error:", error);
 
-    const { mlResponse } = await request.json();
+    // Reuse the body variable instead of reading request again
+    const mlResponse = body?.mlResponse || "Unable to process your request.";
 
     return NextResponse.json({
       enhancedMessage: mlResponse,

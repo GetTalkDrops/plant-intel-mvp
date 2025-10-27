@@ -1,14 +1,25 @@
+"""
+Updated Enhanced Query Router - Now handles data queries and scenarios too!
+Replace your existing enhanced_query_router.py with this file
+"""
+
 from typing import Dict
-from cost_analyzer import CostAnalyzer
-from equipment_predictor import EquipmentPredictor
-from quality_analyzer import QualityAnalyzer
-from efficiency_analyzer import EfficiencyAnalyzer
-from data_aware_responder import DataAwareResponder
-from conversational_templates import ConversationalTemplates
-from query_preprocessor import QueryPreprocessor
+from analyzers.cost_analyzer import CostAnalyzer
+from analyzers.equipment_predictor import EquipmentPredictor
+from analyzers.quality_analyzer import QualityAnalyzer
+from analyzers.efficiency_analyzer import EfficiencyAnalyzer
+from handlers.data_aware_responder import DataAwareResponder
+from ai.conversational_templates import ConversationalTemplates
+from handlers.query_preprocessor import QueryPreprocessor
+
+# NEW IMPORTS
+from handlers.query_classifier import QueryClassifier
+from handlers.data_query_handler import DataQueryHandler
+from handlers.scenario_handler import ScenarioHandler
 
 class EnhancedQueryRouter:
     def __init__(self):
+        # Existing analyzers
         self.cost_analyzer = CostAnalyzer()
         self.equipment_predictor = EquipmentPredictor()
         self.quality_analyzer = QualityAnalyzer()
@@ -17,21 +28,55 @@ class EnhancedQueryRouter:
         self.templates = ConversationalTemplates()
         self.preprocessor = QueryPreprocessor()
         
+        # NEW: Add query classifier and handlers
+        self.classifier = QueryClassifier()
+        self.data_query_handler = DataQueryHandler()
+        self.scenario_handler = ScenarioHandler()
+        
     def route_query(self, query: str, facility_id: int = 1, batch_id: str = None, config: dict = None) -> Dict:
-        """Enhanced routing with batch filtering"""
+        """Enhanced routing with data queries, scenarios, and batch filtering"""
         
         # Preprocess query
         corrected_query, was_corrected = self.preprocessor.suggest_correction(query)
-        categories = self.preprocessor.fuzzy_category_match(query)
         query_lower = corrected_query.lower()
         
-        # Priority 1: Specific material follow-ups (MAT-1900, etc)
+        # NEW: Classify the query type first
+        classification = self.classifier.classify(corrected_query)
+        
+        # NEW: Route to data query handler
+        if classification['type'] == 'data_query':
+            result = self.data_query_handler.handle_query(
+                corrected_query, 
+                facility_id, 
+                classification.get('subtype', 'general_metric')
+            )
+            return self._add_correction_note(result, query, corrected_query, was_corrected)
+        
+        # NEW: Route to scenario handler
+        if classification['type'] == 'scenario':
+            result = self.scenario_handler.handle_scenario(
+                corrected_query,
+                facility_id,
+                classification.get('subtype', 'general')
+            )
+            return self._add_correction_note(result, query, corrected_query, was_corrected)
+        
+        # NEW: Route to data retrieval (for now, treat as data query)
+        if classification['type'] == 'retrieval':
+            # Extract what they're asking for
+            if 'mat-' in query_lower or 'material' in query_lower:
+                # This is a follow-up about a specific material
+                follow_up = self.templates.get_follow_up_response(query, {})
+                if follow_up:
+                    return self._add_correction_note(follow_up, query, corrected_query, was_corrected)
+        
+        # EXISTING: Priority 1: Specific material follow-ups (MAT-1900, etc)
         if any(mat in query_lower for mat in ['mat-1900', 'mat-1800', 'mat-1600']):
             follow_up = self.templates.get_follow_up_response(query, {})
             if follow_up:
                 return self._add_correction_note(follow_up, query, corrected_query, was_corrected)
         
-        # Priority 2: Direct keyword matching
+        # EXISTING: Priority 2: Direct keyword matching for analysis types
         equipment_keywords = ['equipment', 'machine', 'maintenance', 'failure', 'asset']
         quality_keywords = ['quality', 'scrap', 'defect', 'rework']
         cost_keywords = ['cost', 'variance', 'budget', 'overrun', 'spending']
@@ -61,7 +106,9 @@ class EnhancedQueryRouter:
                 query, corrected_query, was_corrected
             )
         
-        # Priority 3: Fuzzy category matching (fallback)
+        # EXISTING: Priority 3: Fuzzy category matching (fallback)
+        categories = self.preprocessor.fuzzy_category_match(query)
+        
         if 'cost' in categories:
             return self._add_correction_note(
                 self._format_cost_response(facility_id, query, batch_id, config),
@@ -86,15 +133,33 @@ class EnhancedQueryRouter:
                 query, corrected_query, was_corrected
             )
         
-        # Fallback: help message
+        # UPDATED: Better fallback help message
         fallback = {
             'type': 'help',
-            'message': "I can analyze your manufacturing data for cost variance, equipment performance, quality issues, and operational efficiency.\n\nTry asking:\n• 'What equipment needs attention?'\n• 'Show me cost risks'\n• 'What are my quality issues?'\n• 'How is my efficiency?'",
+            'message': self._get_help_message(),
             'insights': [],
             'total_impact': 0
         }
         
         return self._add_correction_note(fallback, query, corrected_query, was_corrected)
+    
+    def _get_help_message(self) -> str:
+        """Generate helpful message with examples"""
+        message = "I can help you with:\n\n"
+        message += "**Analysis:**\n"
+        message += "• 'What equipment needs attention?'\n"
+        message += "• 'Show me cost risks'\n"
+        message += "• 'What are my quality issues?'\n"
+        message += "• 'How is my efficiency?'\n\n"
+        message += "**Data Queries:**\n"
+        message += "• 'What was the labor rate?'\n"
+        message += "• 'What is our scrap rate?'\n"
+        message += "• 'Show me efficiency rates'\n\n"
+        message += "**Scenarios:**\n"
+        message += "• 'What if we add a shift?'\n"
+        message += "• 'What if we reduce scrap by 50%?'\n"
+        message += "• 'What if we increase capacity?'"
+        return message
     
     def _add_correction_note(self, response: Dict, original: str, corrected: str, was_corrected: bool) -> Dict:
         """Add correction note if query was significantly changed"""
@@ -102,6 +167,8 @@ class EnhancedQueryRouter:
             correction_note = f"\n\n*Interpreting: '{corrected}'*"
             response['message'] = response['message'] + correction_note
         return response
+    
+    # EXISTING METHODS (keep all your existing _format_* methods exactly as they are)
     
     def _format_cost_response(self, facility_id: int, query: str, batch_id: str = None, config: dict = None) -> Dict:
         result = self.cost_analyzer.predict_cost_variance(facility_id, batch_id, config)

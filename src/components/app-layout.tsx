@@ -213,6 +213,7 @@ export function AppLayout({
               className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               title="Reports"
               aria-label="Reports"
+              onClick={() => router.push("/reports")}
             >
               <svg
                 className="w-5 h-5 text-gray-600"
@@ -336,13 +337,12 @@ export function AppLayout({
 
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-sm h-9 text-gray-600"
-                >
-                  Trends
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start text-sm h-9 text-gray-600"
+                  className={`w-full justify-start text-sm h-9 ${
+                    pathname === "/reports"
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-gray-600"
+                  }`}
+                  onClick={() => router.push("/reports")}
                 >
                   Reports
                 </Button>

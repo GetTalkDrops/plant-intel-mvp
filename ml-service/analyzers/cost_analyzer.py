@@ -4,7 +4,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
-from pattern_explainer import PatternExplainer
+from ai.pattern_explainer import PatternExplainer
 
 class CostAnalyzer:
     def __init__(self):
