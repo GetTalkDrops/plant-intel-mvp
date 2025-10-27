@@ -158,9 +158,9 @@ export function CsvMappingModal({
         )}
 
         <div className="space-y-2">
-          {allColumns.map((col) => (
+          {allColumns.map((col, index) => (
             <MappingRow
-              key={col}
+              key={`${col}-${index}`}
               sourceColumn={col}
               targetField={currentMappings[col]?.targetField || "SELECT"}
               confidence={currentMappings[col]?.confidence || 0}
