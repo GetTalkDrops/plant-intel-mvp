@@ -5,6 +5,8 @@ from typing import Dict
 import os
 from dotenv import load_dotenv
 import warnings
+from analytics.degradation_detector import DegradationDetector
+from analytics.correlation_analyzer import CorrelationAnalyzer
 warnings.filterwarnings('ignore')
 
 class EquipmentPredictor:
@@ -18,9 +20,11 @@ class EquipmentPredictor:
             raise ValueError("Missing Supabase credentials")
         
         self.supabase: Client = create_client(url, key)
+        self.degradation_detector = DegradationDetector(self.supabase)
+        self.correlation_analyzer = CorrelationAnalyzer(self.supabase)
     
     def predict_failures(self, facility_id: int = 1, batch_id: str = None, config: dict = None) -> Dict:
-        """Predict equipment failures with pattern detection and breakdown analysis"""
+        """Predict equipment failures with pattern detection, breakdown analysis, and degradation trends"""
         
         # Extract config or use defaults
         if config is None:
@@ -73,17 +77,25 @@ class EquipmentPredictor:
             df = df[~df['machine_id'].isin(excluded_machines)]
         
         if 'machine_id' not in df.columns or df['machine_id'].isna().all():
-            return {
-                "insights": [],
-                "patterns": [],
-                "total_impact": 0,
-            }
+            if 'equipment_id' not in df.columns or df['equipment_id'].isna().all():
+                return {
+                    "insights": [],
+                    "patterns": [],
+                    "total_impact": 0,
+                }
         
-        unique_machines = df['machine_id'].dropna().unique()
+        # Get unique machines from both columns
+        unique_machines = set()
+        if 'machine_id' in df.columns:
+            unique_machines.update(df['machine_id'].dropna().unique())
+        if 'equipment_id' in df.columns:
+            unique_machines.update(df['equipment_id'].dropna().unique())
+        
         insights = []
         
         for machine_id in unique_machines:
-            machine_data = df[df['machine_id'] == machine_id]
+            # Get data for this machine from either column
+            machine_data = df[(df['machine_id'] == machine_id) | (df['equipment_id'] == machine_id)]
             
             if len(machine_data) < 2:
                 continue
@@ -97,14 +109,37 @@ class EquipmentPredictor:
                     labor_interpretations
                 )
                 
-                if breakdown['total_impact'] > 500:
-                    insights.append({
+                # Add degradation analysis (looks at 30-day trend)
+                degradation = self.degradation_detector.detect_equipment_degradation(
+                    facility_id, machine_id, window_days=30
+                )
+                
+                # Add correlation analysis if degrading
+                correlations = []
+                if degradation:
+                    correlations = self.correlation_analyzer.find_equipment_correlations(
+                        facility_id, machine_id, window_days=30
+                    )
+                
+                if breakdown['total_impact'] > 500 or degradation:
+                    insight = {
                         'equipment_id': machine_id,
                         'failure_probability': breakdown['risk_score'],
                         'estimated_downtime_cost': breakdown['total_impact'],
                         'orders_analyzed': len(machine_data),
                         'analysis': breakdown
-                    })
+                    }
+                    
+                    # Add degradation context if detected
+                    if degradation:
+                        insight['degradation'] = degradation
+                        insight['failure_probability'] = min(95, breakdown['risk_score'] + 15)  # Increase risk if degrading
+                    
+                    # Add correlations
+                    if correlations:
+                        insight['correlations'] = correlations
+                    
+                    insights.append(insight)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -115,7 +150,7 @@ class EquipmentPredictor:
         quality_machines = []
         
         for machine_id in unique_machines:
-            machine_data = df[df['machine_id'] == machine_id]
+            machine_data = df[(df['machine_id'] == machine_id) | (df['equipment_id'] == machine_id)]
             quality_issue_count = (machine_data['quality_issues'].astype(str).str.lower() == 'true').sum()
             
             if quality_issue_count >= pattern_min_count:

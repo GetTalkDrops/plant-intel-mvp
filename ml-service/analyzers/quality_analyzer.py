@@ -5,6 +5,8 @@ from typing import Dict
 import os
 from dotenv import load_dotenv
 import warnings
+from analytics.degradation_detector import DegradationDetector
+from analytics.correlation_analyzer import CorrelationAnalyzer
 warnings.filterwarnings('ignore')
 
 class QualityAnalyzer:
@@ -18,9 +20,11 @@ class QualityAnalyzer:
             raise ValueError("Missing Supabase credentials")
         
         self.supabase: Client = create_client(url, key)
+        self.degradation_detector = DegradationDetector(self.supabase)
+        self.correlation_analyzer = CorrelationAnalyzer(self.supabase)
     
     def analyze_quality_patterns(self, facility_id: int = 1, batch_id: str = None, config: dict = None) -> Dict:
-        """Analyze quality patterns with breakdown and pattern detection"""
+        """Analyze quality patterns with breakdown, pattern detection, and drift analysis"""
         
         # Extract config or use defaults
         if config is None:
@@ -86,15 +90,42 @@ class QualityAnalyzer:
                         scrap_cost_per_unit
                     )
                     
-                    if breakdown['total_impact'] > 500 or breakdown['issue_rate'] > min_issue_rate:
-                        insights.append({
+                    # Add quality drift analysis (30-day trend)
+                    drift = self.degradation_detector.detect_quality_drift(
+                        facility_id, material_code, window_days=30
+                    )
+                    
+                    # Add correlation analysis if drifting
+                    correlations = []
+                    if drift:
+                        correlations = self.correlation_analyzer.find_quality_correlations(
+                            facility_id, material_code,
+                            inflection_date=drift.get('inflection_date'),
+                            window_days=30
+                        )
+                    
+                    if breakdown['total_impact'] > 500 or breakdown['issue_rate'] > min_issue_rate or drift:
+                        insight = {
                             'material_code': material_code,
                             'scrap_rate_per_order': breakdown['scrap_per_order'],
                             'quality_issue_rate': breakdown['issue_rate'],
                             'estimated_cost_impact': breakdown['total_impact'],
                             'orders_analyzed': len(material_data),
                             'analysis': breakdown
-                        })
+                        }
+                        
+                        # Add drift context if detected
+                        if drift:
+                            insight['drift'] = drift
+                            # Increase impact estimate based on trend
+                            if drift['drift_pct'] > 5:
+                                insight['estimated_cost_impact'] = int(breakdown['total_impact'] * 1.5)
+                        
+                        # Add correlations
+                        if correlations:
+                            insight['correlations'] = correlations
+                        
+                        insights.append(insight)
                 except Exception as e:
                     import traceback
                     traceback.print_exc()

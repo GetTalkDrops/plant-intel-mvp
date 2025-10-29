@@ -6,11 +6,18 @@ Returns prioritized insights as:
 - URGENT (top 5)
 - NOTABLE (next 10)
 - BACKGROUND (rest)
+
+Enhanced with consultant-style narratives for all insights
 """
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 from enum import Enum
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from ai.action_recommender import ActionRecommender
 
 
 class InsightPriority(str, Enum):
@@ -46,6 +53,10 @@ class InsightPrioritizer:
     # Priority thresholds
     URGENT_COUNT = 5
     NOTABLE_COUNT = 10
+    
+    def __init__(self):
+        """Initialize with action recommender"""
+        self.action_recommender = ActionRecommender()
     
     def prioritize_insights(
         self, 
@@ -116,22 +127,30 @@ class InsightPrioritizer:
         
         # Patterns are high-value insights
         for pattern in results.get('patterns', []):
+            identifier = pattern.get('identifier', 'Unknown')
+            pattern_data = pattern.copy()
+            pattern_data['identifier'] = identifier
+            
             insights.append({
                 'source_analyzer': 'cost_analyzer',
                 'insight_type': 'pattern',
-                'data': pattern,
+                'data': pattern_data,
                 'financial_impact': abs(pattern.get('total_impact', 0)),
-                'identifier': pattern.get('identifier', 'Unknown')
+                'identifier': identifier
             })
         
         # Individual predictions (work order level)
         for prediction in results.get('predictions', []):
+            wo_number = prediction.get('work_order_number', 'Unknown')
+            prediction_data = prediction.copy()
+            prediction_data['identifier'] = wo_number
+            
             insights.append({
                 'source_analyzer': 'cost_analyzer',
                 'insight_type': 'prediction',
-                'data': prediction,
+                'data': prediction_data,
                 'financial_impact': abs(prediction.get('predicted_variance', 0)),
-                'identifier': prediction.get('work_order_number', 'Unknown')
+                'identifier': wo_number
             })
         
         return insights
@@ -140,17 +159,23 @@ class InsightPrioritizer:
         """Extract insights from equipment predictor results"""
         insights = []
         
-        for prediction in results.get('predictions', []):
+        # Equipment predictor returns 'insights' not 'predictions'
+        for insight in results.get('insights', []):
             # Equipment failures are urgent
-            failure_risk = prediction.get('failure_probability', 0)
-            estimated_cost = prediction.get('estimated_downtime_cost', 0)
+            failure_risk = insight.get('failure_probability', 0)
+            estimated_cost = insight.get('estimated_downtime_cost', 0)
+            equipment_id = insight.get('equipment_id', 'Unknown')
+            
+            # Ensure identifier is in data for narrative generation
+            insight_data = insight.copy()
+            insight_data['identifier'] = equipment_id
             
             insights.append({
                 'source_analyzer': 'equipment_predictor',
                 'insight_type': 'equipment_failure_risk',
-                'data': prediction,
+                'data': insight_data,
                 'financial_impact': estimated_cost,
-                'identifier': prediction.get('equipment_id', 'Unknown'),
+                'identifier': equipment_id,
                 'failure_risk': failure_risk
             })
         
@@ -160,16 +185,22 @@ class InsightPrioritizer:
         """Extract insights from quality analyzer results"""
         insights = []
         
-        for issue in results.get('quality_issues', []):
+        # Quality analyzer returns 'insights' not 'quality_issues'
+        for issue in results.get('insights', []):
             # Scrap and rework have direct financial impact
-            financial_impact = issue.get('estimated_cost', 0)
+            financial_impact = issue.get('estimated_cost_impact', 0)
+            material_code = issue.get('material_code', 'Unknown')
+            
+            # Ensure identifier is in data for narrative generation
+            issue_data = issue.copy()
+            issue_data['identifier'] = material_code
             
             insights.append({
                 'source_analyzer': 'quality_analyzer',
                 'insight_type': 'quality_issue',
-                'data': issue,
+                'data': issue_data,
                 'financial_impact': financial_impact,
-                'identifier': issue.get('material_code', 'Unknown')
+                'identifier': material_code
             })
         
         return insights
@@ -296,13 +327,70 @@ class InsightPrioritizer:
         
         return 50  # Default moderate urgency
     
+    def _generate_narrative(self, scored: ScoredInsight) -> Dict:
+        """Generate consultant-style narrative for an insight"""
+        data = scored.insight_data
+        identifier = data.get('identifier', 'Unknown')
+        
+        # Extract context from insight data
+        analysis = data.get('analysis', {})
+        baseline_context = analysis.get('baseline_context') if analysis else data.get('baseline_context')
+        cost_trend = data.get('cost_trend')
+        degradation = data.get('degradation')
+        drift = data.get('drift')
+        correlations = data.get('correlations')
+        
+        # Determine insight type for narrative generation
+        if scored.insight_type == 'equipment_failure_risk' or scored.source_analyzer == 'equipment_predictor':
+            insight_type = 'equipment'
+        elif scored.insight_type == 'quality_issue' or 'scrap' in str(data).lower():
+            insight_type = 'quality'
+        elif scored.insight_type == 'pattern' and data.get('type') == 'material':
+            insight_type = 'material'
+        elif scored.insight_type == 'prediction' and scored.source_analyzer == 'cost_analyzer':
+            # Cost predictions - check if it's labor or material driven
+            if analysis:
+                primary_driver = analysis.get('variance_breakdown', {}).get('primary_driver', 'cost')
+                insight_type = 'material' if primary_driver == 'material' else 'cost_prediction'
+            else:
+                insight_type = 'material'
+        else:
+            insight_type = scored.insight_type
+        
+        # Generate narrative
+        try:
+            narrative = self.action_recommender.generate_consultant_narrative(
+                insight_type=insight_type,
+                identifier=identifier,
+                analysis=analysis if analysis else data,
+                baseline_context=baseline_context,
+                cost_trend=cost_trend,
+                degradation=degradation,
+                drift=drift,
+                correlations=correlations
+            )
+            return narrative
+        except Exception as e:
+            # Fallback if narrative generation fails
+            return {
+                'headline': f'{identifier} requires attention',
+                'what_happening': 'Analysis detected an issue',
+                'why_matters': f'Financial impact: ${data.get("financial_impact", 0):,.0f}',
+                'recommended_action': 'Review and take corrective action',
+                'urgency_level': 'medium',
+                'financial_impact': data.get('financial_impact', 0)
+            }
+    
     def format_prioritized_feed(self, prioritized: Dict) -> Dict:
         """
-        Format prioritized insights for API response
+        Format prioritized insights for API response with consultant narratives
         
         Returns clean structure ready for frontend
         """
         def format_insight(scored: ScoredInsight) -> Dict:
+            # Generate consultant narrative
+            narrative = self._generate_narrative(scored)
+            
             return {
                 'id': f"{scored.source_analyzer}_{scored.insight_type}_{scored.insight_data.get('identifier', 'unknown')}",
                 'priority': scored.priority_level,
@@ -311,6 +399,7 @@ class InsightPrioritizer:
                 'type': scored.insight_type,
                 'financial_impact': scored.financial_impact,
                 'data': scored.insight_data,
+                'narrative': narrative,  # Consultant-style narrative
                 'scores': {
                     'financial': round(scored.financial_impact, 2),
                     'deviation': round(scored.deviation_score, 2),
@@ -394,3 +483,56 @@ if __name__ == "__main__":
     
     print(f"\nTotal Insights: {formatted['summary']['total_insights']}")
     print(f"Total Financial Impact: ${formatted['summary']['total_financial_impact']:,.0f}")
+    def _generate_narrative(self, scored: ScoredInsight) -> Dict:
+        """Generate consultant-style narrative for an insight"""
+        data = scored.insight_data
+        identifier = data.get('identifier', 'Unknown')
+        
+        # Extract context from insight data
+        analysis = data.get('analysis', {})
+        baseline_context = analysis.get('baseline_context') if analysis else data.get('baseline_context')
+        cost_trend = data.get('cost_trend')
+        degradation = data.get('degradation')
+        drift = data.get('drift')
+        correlations = data.get('correlations')
+        
+        # Determine insight type for narrative generation
+        if scored.insight_type == 'equipment_failure_risk' or scored.source_analyzer == 'equipment_predictor':
+            insight_type = 'equipment'
+        elif scored.insight_type == 'quality_issue' or 'scrap' in str(data).lower():
+            insight_type = 'quality'
+        elif scored.insight_type == 'pattern' and data.get('type') == 'material':
+            insight_type = 'material'
+        elif scored.insight_type == 'prediction' and scored.source_analyzer == 'cost_analyzer':
+            # Cost predictions - check if it's labor or material driven
+            if analysis:
+                primary_driver = analysis.get('variance_breakdown', {}).get('primary_driver', 'cost')
+                insight_type = 'material' if primary_driver == 'material' else 'cost_prediction'
+            else:
+                insight_type = 'material'
+        else:
+            insight_type = scored.insight_type
+        
+        # Generate narrative
+        try:
+            narrative = self.action_recommender.generate_consultant_narrative(
+                insight_type=insight_type,
+                identifier=identifier,
+                analysis=analysis if analysis else data,
+                baseline_context=baseline_context,
+                cost_trend=cost_trend,
+                degradation=degradation,
+                drift=drift,
+                correlations=correlations
+            )
+            return narrative
+        except Exception as e:
+            # Fallback if narrative generation fails
+            return {
+                'headline': f'{identifier} requires attention',
+                'what_happening': 'Analysis detected an issue',
+                'why_matters': f'Financial impact: ${data.get("financial_impact", 0):,.0f}',
+                'recommended_action': 'Review and take corrective action',
+                'urgency_level': 'medium',
+                'financial_impact': data.get('financial_impact', 0)
+            }

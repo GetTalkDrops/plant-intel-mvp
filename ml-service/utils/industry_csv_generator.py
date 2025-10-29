@@ -66,7 +66,7 @@ class IndustryCSVGenerator:
             }
             rows.append(row)
         
-        print(f"✅ Automotive: {spike_count} orders with cost spikes")
+        print(f"Automotive: {spike_count} orders with cost spikes")
         return rows
     
     def generate_metal_fabrication_csv(self):
@@ -129,7 +129,7 @@ class IndustryCSVGenerator:
             }
             rows.append(row)
         
-        print(f"✅ Metal Fabrication: {labor_issues} orders with labor overruns")
+        print(f"Metal Fabrication: {labor_issues} orders with labor overruns")
         return rows
     
     def generate_food_beverage_csv(self):
@@ -199,7 +199,7 @@ class IndustryCSVGenerator:
             }
             rows.append(row)
         
-        print(f"✅ Food & Beverage: {quality_issues} orders with quality issues")
+        print(f"Food & Beverage: {quality_issues} orders with quality issues")
         return rows
     
     def write_csv(self, rows, filename):
@@ -235,7 +235,7 @@ class IndustryCSVGenerator:
         food_rows = self.generate_food_beverage_csv()
         self.write_csv(food_rows, 'sample-data/food-beverage/food_beverage_sample.csv')
         
-        print("\n✅ All sample data generated successfully!")
+        print("\nAll sample data generated successfully!")
         print("\nFiles created:")
         print("  • sample-data/automotive/automotive_sample.csv")
         print("  • sample-data/metal-fabrication/metal_fabrication_sample.csv")

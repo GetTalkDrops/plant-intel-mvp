@@ -10,7 +10,7 @@ import CsvMappingModal from "./csv-mapping-modal";
 import {
   processManufacturingQuery,
   type ManufacturingInsight,
-} from "@/lib/analytics/manufacturingIntelligence";
+} from "@/lib/analytics/chat-processor";
 import { type ColumnMapping } from "@/lib/csv/csvMapper";
 import { useUser } from "@clerk/nextjs";
 import { SavingsTracker } from "./savings-tracker";

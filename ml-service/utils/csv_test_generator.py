@@ -248,7 +248,7 @@ class CSVTestDataGenerator:
             writer.writeheader()
             writer.writerows(orders)
         
-        print(f"  ✅ Created: {filepath} ({len(orders)} orders)")
+        print(f"  Created: {filepath} ({len(orders)} orders)")
     
     def generate_all_scenarios(self):
         """Generate all test scenarios"""
@@ -271,7 +271,7 @@ class CSVTestDataGenerator:
             print()
         
         print("="*60)
-        print(f"✅ COMPLETE: Generated {total_orders} total orders")
+        print(f"COMPLETE: Generated {total_orders} total orders")
         print(f"📁 Files saved to: {self.output_dir.absolute()}")
         print("="*60)
         print("\nColumn names now match Supabase schema (snake_case):")

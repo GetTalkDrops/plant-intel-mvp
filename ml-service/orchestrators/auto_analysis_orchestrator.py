@@ -4,9 +4,10 @@ Automatically triggers all applicable analyzers on CSV upload and returns priori
 
 Flow:
 1. Detect data tier (what analyses are possible)
-2. Run all applicable analyzers in parallel
-3. Collect and prioritize results
-4. Return top 5 URGENT, next 10 NOTABLE, rest as background
+2. Update baselines with new data
+3. Run all applicable analyzers in parallel
+4. Collect and prioritize results
+5. Return top 5 URGENT, next 10 NOTABLE, rest as background
 """
 
 import asyncio
@@ -26,6 +27,11 @@ from analyzers.cost_analyzer import CostAnalyzer
 
 from utils.data_tier_detector import DataTierDetector
 from utils.insight_prioritizer import InsightPrioritizer
+from analytics.baseline_tracker import BaselineTracker
+
+# Supabase client for baseline tracker
+from supabase import create_client
+from dotenv import load_dotenv
 
 
 class AutoAnalysisOrchestrator:
@@ -34,6 +40,16 @@ class AutoAnalysisOrchestrator:
     def __init__(self):
         self.tier_detector = DataTierDetector()
         self.prioritizer = InsightPrioritizer()
+        
+        # Initialize Supabase for baseline tracker
+        load_dotenv('../.env.local')
+        url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+        key = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        if url and key:
+            supabase = create_client(url, key)
+            self.baseline_tracker = BaselineTracker(supabase)
+        else:
+            self.baseline_tracker = None
         
         # Initialize analyzers
         self.cost_analyzer = CostAnalyzer()
@@ -67,7 +83,19 @@ class AutoAnalysisOrchestrator:
             tier = self.tier_detector.detect_tier(csv_headers)
             tier_message = self.tier_detector.generate_feedback_message(tier)
             
-            # Step 2: Run applicable analyzers
+            # Step 2: Update baselines with new data
+            baseline_updates = {}
+            if self.baseline_tracker:
+                try:
+                    baseline_updates = self.baseline_tracker.update_baselines(
+                        facility_id=facility_id,
+                        batch_id=batch_id
+                    )
+                except Exception as e:
+                    print(f"Warning: Baseline update failed: {str(e)}")
+                    baseline_updates = {'error': str(e)}
+            
+            # Step 3: Run applicable analyzers
             analyzer_results = self._run_analyzers(
                 facility_id=facility_id,
                 batch_id=batch_id,
@@ -75,7 +103,7 @@ class AutoAnalysisOrchestrator:
                 config=config
             )
             
-            # Step 3: Prioritize insights
+            # Step 4: Prioritize insights
             prioritized = self.prioritizer.prioritize_insights(
                 cost_results=analyzer_results.get('cost_analyzer'),
                 equipment_results=analyzer_results.get('equipment_predictor'),
@@ -83,7 +111,7 @@ class AutoAnalysisOrchestrator:
                 efficiency_results=analyzer_results.get('efficiency_analyzer')
             )
             
-            # Step 4: Format response
+            # Step 5: Format response
             formatted_insights = self.prioritizer.format_prioritized_feed(prioritized)
             
             # Calculate processing time
@@ -106,6 +134,7 @@ class AutoAnalysisOrchestrator:
                     'quality_analyzer': self._summarize_analyzer_result(analyzer_results.get('quality_analyzer')),
                     'efficiency_analyzer': self._summarize_analyzer_result(analyzer_results.get('efficiency_analyzer'))
                 },
+                'baseline_updates': baseline_updates,
                 'metadata': {
                     'batch_id': batch_id,
                     'facility_id': facility_id,
@@ -309,6 +338,8 @@ if __name__ == "__main__":
         print(f"  - Urgent: {result1['insights']['summary']['urgent_count']}")
         print(f"  - Notable: {result1['insights']['summary']['notable_count']}")
         print(f"Processing Time: {result1['metadata']['processing_time_seconds']}s")
+        if result1.get('baseline_updates'):
+            print(f"Baseline Updates: {result1['baseline_updates']}")
     else:
         print(f"Error: {result1['error']}")
     
