@@ -23,23 +23,33 @@ class CsvStorageService {
   ): Promise<StoreCsvResult> {
     try {
       // Generate batch ID for this upload
-      const batchId = `batch_${Date.now()}_${fileHash.substring(0, 8)}`;
+      const batchId = `${Date.now()}_${fileName}`;
 
-      // Store the CSV rows in Supabase
+      // Determine facility ID if not provided
+      const finalFacilityId =
+        facilityId || (userEmail === "skinner.chris@gmail.com" ? 1 : 2);
+      const finalDemoMode = demoMode || userEmail === "skinner.chris@gmail.com";
+
+      // Transform mapped data to work_orders format
+      // Only include columns that exist in the work_orders table
+      const workOrders = mappedData.map((row, index) => ({
+        facility_id: finalFacilityId,
+        demo_mode: finalDemoMode,
+        uploaded_csv_batch: batchId,
+        work_order_number:
+          row.work_order_number || `UPLOAD-${batchId}-${index + 1}`,
+        material_code: row.material_code || null,
+        supplier_id: row.supplier_id || null,
+        planned_material_cost: row.planned_material_cost || 0,
+        actual_material_cost: row.actual_material_cost || 0,
+        planned_labor_hours: row.planned_labor_hours || 0,
+        actual_labor_hours: row.actual_labor_hours || 0,
+      }));
+
+      // Store in work_orders table
       const { data, error } = await supabase
-        .from("csv_uploads")
-        .insert(
-          mappedData.map((row) => ({
-            user_email: userEmail,
-            batch_id: batchId,
-            file_name: fileName,
-            file_hash: fileHash,
-            header_signature: headerSignature,
-            mapping_name: mappingName,
-            data: row,
-            created_at: new Date().toISOString(),
-          }))
-        )
+        .from("work_orders")
+        .insert(workOrders)
         .select();
 
       if (error) {
@@ -54,8 +64,8 @@ class CsvStorageService {
         success: true,
         batchId,
         recordsInserted: mappedData.length,
-        facilityId,
-        demoMode,
+        facilityId: finalFacilityId,
+        demoMode: finalDemoMode,
       };
     } catch (error) {
       console.error("Unexpected error storing CSV data:", error);

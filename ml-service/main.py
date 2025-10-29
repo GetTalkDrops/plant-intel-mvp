@@ -3,11 +3,11 @@ import os
 
 load_dotenv()
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException  # UPDATED
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse  # NEW
-from typing import Optional  # NEW
-import json  # NEW
+from fastapi.responses import JSONResponse
+from typing import Optional
+import json
 
 from analyzers.cost_analyzer import CostAnalyzer
 from analyzers.equipment_predictor import EquipmentPredictor
@@ -15,7 +15,8 @@ from analyzers.quality_analyzer import QualityAnalyzer
 from analyzers.efficiency_analyzer import EfficiencyAnalyzer
 from ai.auto_analysis_system import ConversationalAutoAnalysis
 from handlers.query_router import EnhancedQueryRouter
-from handlers.csv_upload_service import CsvUploadService  # NEW
+from handlers.csv_upload_service import CsvUploadService
+from orchestrators.auto_analysis_orchestrator import AutoAnalysisOrchestrator  # NEW
 
 app = FastAPI()
 
@@ -35,7 +36,8 @@ quality_analyzer = QualityAnalyzer()
 efficiency_analyzer = EfficiencyAnalyzer()
 auto_analysis = ConversationalAutoAnalysis()
 query_router = EnhancedQueryRouter()
-csv_service = CsvUploadService()  # NEW
+csv_service = CsvUploadService()
+orchestrator = AutoAnalysisOrchestrator()  # NEW
 
 @app.get("/health")
 async def health_check():
@@ -96,7 +98,57 @@ async def process_chat_query_get(query: str, facility_id: int = 1):
 
 
 # ============================================================================
-# CSV UPLOAD ENDPOINTS (NEW)
+# AUTO-ANALYSIS ORCHESTRATOR ENDPOINT (NEW)
+# ============================================================================
+
+@app.post("/analyze/auto")
+async def auto_analyze(request_data: dict):
+    """
+    Run comprehensive auto-analysis using the orchestrator
+    
+    Body:
+        facility_id: int
+        batch_id: str
+        csv_headers: list[str]
+        config: dict (optional)
+    """
+    try:
+        facility_id = request_data.get('facility_id', 1)
+        batch_id = request_data.get('batch_id')
+        csv_headers = request_data.get('csv_headers', [])
+        config = request_data.get('config', None)
+        
+        if not batch_id:
+            return JSONResponse(
+                status_code=400,
+                content={'success': False, 'error': 'batch_id is required'}
+            )
+        
+        # Run orchestrator
+        result = orchestrator.analyze(
+            facility_id=facility_id,
+            batch_id=batch_id,
+            csv_headers=csv_headers,
+            config=config
+        )
+        
+        return JSONResponse(
+            status_code=200 if result['success'] else 400,
+            content=result
+        )
+    
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                'success': False,
+                'error': f'Auto-analysis failed: {str(e)}'
+            }
+        )
+
+
+# ============================================================================
+# CSV UPLOAD ENDPOINTS
 # ============================================================================
 
 @app.post("/upload/csv")

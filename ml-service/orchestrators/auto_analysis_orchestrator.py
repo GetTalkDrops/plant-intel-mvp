@@ -1,0 +1,336 @@
+"""
+Auto-Analysis Orchestrator
+Automatically triggers all applicable analyzers on CSV upload and returns prioritized insights
+
+Flow:
+1. Detect data tier (what analyses are possible)
+2. Run all applicable analyzers in parallel
+3. Collect and prioritize results
+4. Return top 5 URGENT, next 10 NOTABLE, rest as background
+"""
+
+import asyncio
+from typing import Dict, List, Optional
+from datetime import datetime
+import traceback
+
+# Import analyzers
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from analyzers.cost_analyzer import CostAnalyzer
+# from analyzers.equipment_predictor import EquipmentPredictor  # Import when ready
+# from analyzers.quality_analyzer import QualityAnalyzer  # Import when ready
+# from analyzers.efficiency_analyzer import EfficiencyAnalyzer  # Import when ready
+
+from utils.data_tier_detector import DataTierDetector
+from utils.insight_prioritizer import InsightPrioritizer
+
+
+class AutoAnalysisOrchestrator:
+    """Orchestrates automatic analysis on CSV upload"""
+    
+    def __init__(self):
+        self.tier_detector = DataTierDetector()
+        self.prioritizer = InsightPrioritizer()
+        
+        # Initialize analyzers
+        self.cost_analyzer = CostAnalyzer()
+        # self.equipment_predictor = EquipmentPredictor()  # Add when ready
+        # self.quality_analyzer = QualityAnalyzer()  # Add when ready
+        # self.efficiency_analyzer = EfficiencyAnalyzer()  # Add when ready
+    
+    def analyze(
+        self,
+        facility_id: int,
+        batch_id: str,
+        csv_headers: List[str],
+        config: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Main entry point - run all applicable analyses
+        
+        Args:
+            facility_id: Facility ID from upload
+            batch_id: Batch ID from upload
+            csv_headers: List of CSV column names
+            config: Optional config overrides
+            
+        Returns:
+            Dictionary with prioritized insights and metadata
+        """
+        start_time = datetime.now()
+        
+        try:
+            # Step 1: Detect data tier
+            tier = self.tier_detector.detect_tier(csv_headers)
+            tier_message = self.tier_detector.generate_feedback_message(tier)
+            
+            # Step 2: Run applicable analyzers
+            analyzer_results = self._run_analyzers(
+                facility_id=facility_id,
+                batch_id=batch_id,
+                tier=tier,
+                config=config
+            )
+            
+            # Step 3: Prioritize insights
+            prioritized = self.prioritizer.prioritize_insights(
+                cost_results=analyzer_results.get('cost_analyzer'),
+                equipment_results=analyzer_results.get('equipment_predictor'),
+                quality_results=analyzer_results.get('quality_analyzer'),
+                efficiency_results=analyzer_results.get('efficiency_analyzer')
+            )
+            
+            # Step 4: Format response
+            formatted_insights = self.prioritizer.format_prioritized_feed(prioritized)
+            
+            # Calculate processing time
+            processing_time = (datetime.now() - start_time).total_seconds()
+            
+            return {
+                'success': True,
+                'data_tier': {
+                    'tier': tier.tier,
+                    'tier_name': tier.tier_name,
+                    'capabilities': tier.capabilities,
+                    'message': tier_message,
+                    'missing_for_next_tier': tier.missing_for_next_tier
+                },
+                'insights': formatted_insights,
+                'analyzer_details': {
+                    'analyzers_run': list(analyzer_results.keys()),
+                    'cost_analyzer': self._summarize_analyzer_result(analyzer_results.get('cost_analyzer')),
+                    'equipment_predictor': self._summarize_analyzer_result(analyzer_results.get('equipment_predictor')),
+                    'quality_analyzer': self._summarize_analyzer_result(analyzer_results.get('quality_analyzer')),
+                    'efficiency_analyzer': self._summarize_analyzer_result(analyzer_results.get('efficiency_analyzer'))
+                },
+                'metadata': {
+                    'batch_id': batch_id,
+                    'facility_id': facility_id,
+                    'analysis_timestamp': datetime.now().isoformat(),
+                    'processing_time_seconds': round(processing_time, 2)
+                }
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Auto-analysis failed: {str(e)}",
+                'technical_details': traceback.format_exc(),
+                'metadata': {
+                    'batch_id': batch_id,
+                    'facility_id': facility_id,
+                    'analysis_timestamp': datetime.now().isoformat()
+                }
+            }
+    
+    def _run_analyzers(
+        self,
+        facility_id: int,
+        batch_id: str,
+        tier,
+        config: Optional[Dict]
+    ) -> Dict:
+        """
+        Run all applicable analyzers based on data tier
+        
+        Args:
+            facility_id: Facility ID
+            batch_id: Batch ID
+            tier: DataTier object
+            config: Optional config
+            
+        Returns:
+            Dictionary with results from each analyzer
+        """
+        results = {}
+        available_analyzers = set(tier.available_analyzers)
+        
+        # Cost Analyzer - always runs if tier >= 1
+        if 'cost_analyzer' in available_analyzers:
+            try:
+                results['cost_analyzer'] = self.cost_analyzer.predict_cost_variance(
+                    facility_id=facility_id,
+                    batch_id=batch_id,
+                    config=config
+                )
+            except Exception as e:
+                results['cost_analyzer'] = {
+                    'status': 'error',
+                    'error': str(e),
+                    'message': f"Cost analysis failed: {str(e)}"
+                }
+        
+        # Equipment Predictor - runs if tier >= 3
+        if 'equipment_predictor' in available_analyzers:
+            try:
+                # Uncomment when ready
+                # results['equipment_predictor'] = self.equipment_predictor.predict_failures(
+                #     facility_id=facility_id,
+                #     batch_id=batch_id,
+                #     config=config
+                # )
+                results['equipment_predictor'] = {
+                    'status': 'not_implemented',
+                    'message': 'Equipment predictor coming soon'
+                }
+            except Exception as e:
+                results['equipment_predictor'] = {
+                    'status': 'error',
+                    'error': str(e)
+                }
+        
+        # Quality Analyzer - runs if tier >= 3
+        if 'quality_analyzer' in available_analyzers:
+            try:
+                # Uncomment when ready
+                # results['quality_analyzer'] = self.quality_analyzer.analyze_quality(
+                #     facility_id=facility_id,
+                #     batch_id=batch_id,
+                #     config=config
+                # )
+                results['quality_analyzer'] = {
+                    'status': 'not_implemented',
+                    'message': 'Quality analyzer coming soon'
+                }
+            except Exception as e:
+                results['quality_analyzer'] = {
+                    'status': 'error',
+                    'error': str(e)
+                }
+        
+        # Efficiency Analyzer - runs if tier >= 4
+        if 'efficiency_analyzer' in available_analyzers:
+            try:
+                # Uncomment when ready
+                # results['efficiency_analyzer'] = self.efficiency_analyzer.find_opportunities(
+                #     facility_id=facility_id,
+                #     batch_id=batch_id,
+                #     config=config
+                # )
+                results['efficiency_analyzer'] = {
+                    'status': 'not_implemented',
+                    'message': 'Efficiency analyzer coming soon'
+                }
+            except Exception as e:
+                results['efficiency_analyzer'] = {
+                    'status': 'error',
+                    'error': str(e)
+                }
+        
+        return results
+    
+    def _summarize_analyzer_result(self, result: Optional[Dict]) -> Dict:
+        """Create summary of analyzer result for metadata"""
+        if not result:
+            return {'status': 'not_run'}
+        
+        if result.get('status') == 'error':
+            return {
+                'status': 'error',
+                'error': result.get('error', 'Unknown error')
+            }
+        
+        if result.get('status') == 'not_implemented':
+            return {
+                'status': 'not_implemented'
+            }
+        
+        if result.get('status') == 'insufficient_data':
+            return {
+                'status': 'insufficient_data',
+                'message': result.get('message', 'Insufficient data')
+            }
+        
+        if result.get('status') == 'success':
+            # Summarize what was found
+            summary = {
+                'status': 'success',
+                'insights_found': 0
+            }
+            
+            # Count insights
+            predictions = result.get('predictions', [])
+            patterns = result.get('patterns', [])
+            quality_issues = result.get('quality_issues', [])
+            opportunities = result.get('opportunities', [])
+            
+            summary['insights_found'] = (
+                len(predictions) + 
+                len(patterns) + 
+                len(quality_issues) + 
+                len(opportunities)
+            )
+            
+            # Add financial impact if available
+            if 'total_impact' in result:
+                summary['total_impact'] = result['total_impact']
+            
+            if 'total_savings_opportunity' in result:
+                summary['total_savings'] = result['total_savings_opportunity']
+            
+            return summary
+        
+        return {'status': 'unknown'}
+
+
+# Example usage
+if __name__ == "__main__":
+    orchestrator = AutoAnalysisOrchestrator()
+    
+    # Test with different data tiers
+    print("="*60)
+    print("Testing Auto-Analysis Orchestrator")
+    print("="*60)
+    
+    # Tier 1: Basic cost data
+    print("\nTest 1: Basic cost data (Tier 1)")
+    headers_tier1 = [
+        "Work Order Number",
+        "Planned Material Cost",
+        "Actual Material Cost",
+        "Planned Labor Hours",
+        "Actual Labor Hours"
+    ]
+    
+    result1 = orchestrator.analyze(
+        facility_id=1,
+        batch_id="test_batch_001",
+        csv_headers=headers_tier1
+    )
+    
+    if result1['success']:
+        print(f"Data Tier: {result1['data_tier']['tier']} ({result1['data_tier']['tier_name']})")
+        print(f"Message: {result1['data_tier']['message']}")
+        print(f"Analyzers Run: {', '.join(result1['analyzer_details']['analyzers_run'])}")
+        print(f"Total Insights: {result1['insights']['summary']['total_insights']}")
+        print(f"  - Urgent: {result1['insights']['summary']['urgent_count']}")
+        print(f"  - Notable: {result1['insights']['summary']['notable_count']}")
+        print(f"Processing Time: {result1['metadata']['processing_time_seconds']}s")
+    else:
+        print(f"Error: {result1['error']}")
+    
+    # Tier 3: With equipment data
+    print("\n" + "="*60)
+    print("Test 2: With equipment data (Tier 3)")
+    headers_tier3 = headers_tier1 + [
+        "Material Code",
+        "Supplier ID",
+        "Equipment ID",
+        "Scrapped Quantity"
+    ]
+    
+    result2 = orchestrator.analyze(
+        facility_id=1,
+        batch_id="test_batch_002",
+        csv_headers=headers_tier3
+    )
+    
+    if result2['success']:
+        print(f"Data Tier: {result2['data_tier']['tier']} ({result2['data_tier']['tier_name']})")
+        print(f"Analyzers Run: {', '.join(result2['analyzer_details']['analyzers_run'])}")
+        print(f"Capabilities: {', '.join(result2['data_tier']['capabilities'][:2])}")
+    else:
+        print(f"Error: {result2['error']}")

@@ -14,6 +14,7 @@ from io import StringIO
 from dataclasses import dataclass, asdict
 
 from utils.flexible_column_mapper import FlexibleColumnMapper
+from orchestrators.auto_analysis_orchestrator import AutoAnalysisOrchestrator
 from supabase import create_client, Client
 import os
 
@@ -51,6 +52,7 @@ class UploadResult:
     confidence: float = 0.0
     error: Optional[str] = None
     technical_details: Optional[str] = None
+    auto_analysis: Optional[Dict] = None
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON response"""
@@ -64,6 +66,7 @@ class CsvUploadService:
     
     def __init__(self):
         self.mapper = FlexibleColumnMapper()
+        self.orchestrator = AutoAnalysisOrchestrator()
         
         # Initialize Supabase client
         supabase_url = os.environ.get("SUPABASE_URL")
@@ -145,6 +148,14 @@ class CsvUploadService:
                     batch_id=batch_id
                 )
             
+            # Step 6: Run auto-analysis
+            auto_analysis = self.orchestrator.analyze(
+                facility_id=facility_id,
+                batch_id=batch_id,
+                csv_headers=parsed.headers,
+                config=None  # Will use facility defaults
+            )
+            
             # Success!
             confidence = len(mapping_result['mapping']) / len(self.mapper.column_patterns) * 100
             
@@ -155,7 +166,8 @@ class CsvUploadService:
                 demo_mode=is_demo,
                 batch_id=batch_id,
                 mapping_used=mapping_result['mapping'],
-                confidence=round(confidence, 1)
+                confidence=round(confidence, 1),
+                auto_analysis=auto_analysis
             )
             
         except Exception as e:

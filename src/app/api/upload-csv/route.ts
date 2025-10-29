@@ -2,12 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { csvStorageService } from "@/lib/csv/csv-storage";
 import { isDemoAccount, DEMO_FACILITY_ID } from "@/lib/crm/demo-account";
-import {
-  formatCostAnalysisResponse,
-  formatEquipmentResponse,
-  formatQualityResponse,
-  formatEfficiencyResponse,
-} from "@/lib/ai/format-ml-response";
+import { buildInsightCards } from "@/lib/analytics/insight-builder";
 
 export async function POST(request: NextRequest) {
   // Get authenticated user
@@ -113,176 +108,122 @@ export async function POST(request: NextRequest) {
       console.error("Error fetching analysis config:", err);
       // Continue with null config (ML will use defaults)
     }
-    // Auto-analysis with all categories
+
+    // Auto-analysis with orchestrator
     let autoAnalysis = null;
     try {
       const facilityId = isDemoAccount(userEmail) ? DEMO_FACILITY_ID : 2;
       const batchId = result.batchId;
 
-      console.log("Triggering comprehensive auto-analysis for batch:", batchId);
+      console.log("Triggering auto-analysis orchestrator for batch:", batchId);
 
-      // Run all analyzers in parallel
-      const [
-        costResponse,
-        equipmentResponse,
-        qualityResponse,
-        efficiencyResponse,
-      ] = await Promise.all([
-        fetch("http://localhost:8000/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: "cost variance analysis",
-            user_email: userEmail,
-            facility_id: facilityId,
-            batch_id: batchId,
-            config: analysisConfig,
-          }),
+      // Get CSV headers from mapping
+      const csvHeaders = mapping
+        .map((m: any) => m.sourceColumn)
+        .filter((h: any) => h !== null && h !== undefined);
+
+      // Call the new orchestrator endpoint
+      const response = await fetch("http://localhost:8000/analyze/auto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          facility_id: facilityId,
+          batch_id: batchId,
+          csv_headers: csvHeaders,
+          config: analysisConfig,
         }),
-        fetch("http://localhost:8000/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: "equipment analysis",
-            user_email: userEmail,
-            facility_id: facilityId,
-            batch_id: batchId,
-            config: analysisConfig,
-          }),
-        }),
-        fetch("http://localhost:8000/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: "quality analysis",
-            user_email: userEmail,
-            facility_id: facilityId,
-            batch_id: batchId,
-            config: analysisConfig,
-          }),
-        }),
-        fetch("http://localhost:8000/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: "efficiency analysis",
-            user_email: userEmail,
-            facility_id: facilityId,
-            batch_id: batchId,
-            config: analysisConfig,
-          }),
-        }),
-      ]);
-
-      const costData = costResponse.ok ? await costResponse.json() : null;
-      const equipmentData = equipmentResponse.ok
-        ? await equipmentResponse.json()
-        : null;
-      const qualityData = qualityResponse.ok
-        ? await qualityResponse.json()
-        : null;
-      const efficiencyData = efficiencyResponse.ok
-        ? await efficiencyResponse.json()
-        : null;
-
-      // Extract savings opportunity from cost data
-      const totalSavingsOpportunity = costData?.total_savings_opportunity || 0;
-
-      console.log("Cost data has patterns:", costData?.patterns?.length || 0);
-
-      // Build executive summary
-      const summaryParts = [];
-      const allMessages = [];
-      let totalImpact = 0;
-
-      if (costData && costData.predictions && costData.predictions.length > 0) {
-        summaryParts.push(
-          `${costData.predictions.length} cost variances ($${
-            costData.total_impact?.toLocaleString() || 0
-          })`
-        );
-        allMessages.push(costData.message);
-        totalImpact += costData.total_impact || 0;
-      }
-
-      if (
-        equipmentData &&
-        equipmentData.insights &&
-        equipmentData.insights.length > 0
-      ) {
-        summaryParts.push(`${equipmentData.insights.length} equipment issues`);
-        allMessages.push(equipmentData.message);
-      }
-
-      if (
-        qualityData &&
-        qualityData.insights &&
-        qualityData.insights.length > 0
-      ) {
-        summaryParts.push(`${qualityData.insights.length} quality issues`);
-        allMessages.push(qualityData.message);
-      }
-
-      if (
-        efficiencyData &&
-        efficiencyData.insights &&
-        efficiencyData.insights.length > 0
-      ) {
-        summaryParts.push(
-          `${efficiencyData.insights.length} efficiency opportunities`
-        );
-        allMessages.push(efficiencyData.message);
-      }
-
-      // Create executive summary
-      let executiveSummary = "";
-      if (summaryParts.length > 0) {
-        executiveSummary = `**Analysis Complete**\n\nFound: ${summaryParts.join(
-          ", "
-        )}\n\n`;
-        if (totalImpact > 0) {
-          executiveSummary += `**Total Financial Impact: $${totalImpact.toLocaleString()}**\n\n`;
-        }
-        executiveSummary +=
-          "Detailed analysis below. Ask questions for deeper insights.";
-      } else {
-        executiveSummary =
-          "Analysis complete. All metrics within normal ranges. No significant issues detected.";
-      }
-
-      // Format all analyzers
-      const formattedCost = costData
-        ? formatCostAnalysisResponse(costData)
-        : null;
-
-      const formattedEquipment = equipmentData
-        ? formatEquipmentResponse(equipmentData)
-        : null;
-
-      const formattedQuality = qualityData
-        ? formatQualityResponse(qualityData)
-        : null;
-
-      const formattedEfficiency = efficiencyData
-        ? formatEfficiencyResponse(efficiencyData)
-        : null;
-
-      autoAnalysis = {
-        executiveSummary,
-        cost: formattedCost,
-        equipment: formattedEquipment,
-        quality: formattedQuality,
-        efficiency: formattedEfficiency,
-        totalImpact,
-        totalSavingsOpportunity,
-      };
-
-      console.log("Auto-analysis complete:", {
-        costIssues: costData?.predictions?.length || 0,
-        equipmentIssues: equipmentData?.insights?.length || 0,
-        qualityIssues: qualityData?.insights?.length || 0,
-        efficiencyIssues: efficiencyData?.insights?.length || 0,
       });
+
+      const orchestratorResult = await response.json();
+
+      console.log("Orchestrator response:", {
+        success: orchestratorResult.success,
+        dataTier: orchestratorResult.data_tier?.tier,
+        urgentCount: orchestratorResult.insights?.urgent?.length,
+        notableCount: orchestratorResult.insights?.notable?.length,
+      });
+
+      if (orchestratorResult.success) {
+        // Build executive summary
+        const urgentCount = orchestratorResult.insights.urgent.length;
+        const notableCount = orchestratorResult.insights.notable.length;
+        const totalImpact =
+          orchestratorResult.insights.summary.total_financial_impact;
+        const totalSavings =
+          orchestratorResult.analyzer_details.cost_analyzer?.total_savings || 0;
+
+        let executiveSummary = `**Analysis Complete - ${orchestratorResult.data_tier.tier_name} Data**\n\n`;
+
+        if (urgentCount > 0 || notableCount > 0) {
+          executiveSummary += `Found ${urgentCount} urgent issue${
+            urgentCount !== 1 ? "s" : ""
+          } and ${notableCount} notable finding${
+            notableCount !== 1 ? "s" : ""
+          }.\n\n`;
+        }
+
+        if (totalImpact > 0) {
+          executiveSummary += `**Total Financial Impact: $${Math.abs(
+            totalImpact
+          ).toLocaleString()}**\n\n`;
+        }
+
+        if (totalSavings > 0) {
+          executiveSummary += `**Potential Savings Identified: $${totalSavings.toLocaleString()}**\n\n`;
+        }
+
+        executiveSummary += orchestratorResult.data_tier.message;
+
+        // Build insight cards from orchestrator results
+        const urgentInsights = orchestratorResult.insights.urgent || [];
+        const notableInsights = orchestratorResult.insights.notable || [];
+
+        // Convert orchestrator insights to card format
+        const allInsights = [...urgentInsights, ...notableInsights];
+        const costCards = buildInsightCards(allInsights, "cost", totalImpact);
+
+        autoAnalysis = {
+          executiveSummary,
+          orchestratorData: orchestratorResult,
+          cost: {
+            cards: costCards,
+            text: `Found ${allInsights.length} cost insights with $${Math.abs(
+              totalImpact
+            ).toLocaleString()} total impact`,
+            followUps: ["Show details", "What caused this?"],
+          },
+          equipment: {
+            cards: [],
+            text: "Equipment analysis complete",
+            followUps: [],
+          },
+          quality: {
+            cards: [],
+            text: "Quality analysis complete",
+            followUps: [],
+          },
+          efficiency: {
+            cards: [],
+            text: "Efficiency analysis complete",
+            followUps: [],
+          },
+          totalImpact: Math.abs(totalImpact),
+          totalSavingsOpportunity: totalSavings,
+        };
+
+        console.log("Auto-analysis complete:", {
+          urgentIssues: urgentCount,
+          notableIssues: notableCount,
+          dataTier: orchestratorResult.data_tier.tier,
+          totalImpact: totalImpact,
+        });
+      } else {
+        console.error("Orchestrator failed:", orchestratorResult.error);
+        autoAnalysis = {
+          executiveSummary: "Analysis initiated but incomplete.",
+          error: true,
+        };
+      }
     } catch (analysisError) {
       console.error("Auto-analysis failed:", analysisError);
       autoAnalysis = {
@@ -292,7 +233,7 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // === NEW: Create analysis review record for HITL ===
+    // Create analysis review record for HITL
     if (autoAnalysis && !autoAnalysis.error) {
       console.log("=== ATTEMPTING TO CREATE REVIEW RECORD ===");
       try {
@@ -306,7 +247,6 @@ export async function POST(request: NextRequest) {
         console.log("Existing profile:", existingProfile);
 
         let customerProfileId = existingProfile?.id;
-        console.log("Creating new customer profile for:", userEmail);
 
         if (!customerProfileId) {
           console.log("Creating new customer profile for:", userEmail);
@@ -339,12 +279,10 @@ export async function POST(request: NextRequest) {
         }
 
         if (customerProfileId) {
-          // Count total issues
+          // Count total issues from orchestrator
           const issuesFound =
-            (autoAnalysis.cost?.cards?.length || 0) +
-            (autoAnalysis.equipment?.cards?.length || 0) +
-            (autoAnalysis.quality?.cards?.length || 0) +
-            (autoAnalysis.efficiency?.cards?.length || 0);
+            (autoAnalysis.orchestratorData?.insights?.urgent?.length || 0) +
+            (autoAnalysis.orchestratorData?.insights?.notable?.length || 0);
 
           console.log("Issues found:", issuesFound);
           console.log("Savings:", autoAnalysis.totalSavingsOpportunity);
@@ -358,6 +296,7 @@ export async function POST(request: NextRequest) {
               status: "pending",
               original_results: {
                 executive_summary: autoAnalysis.executiveSummary,
+                orchestrator_data: autoAnalysis.orchestratorData,
                 cost: autoAnalysis.cost,
                 equipment: autoAnalysis.equipment,
                 quality: autoAnalysis.quality,
@@ -381,7 +320,6 @@ export async function POST(request: NextRequest) {
         // Don't fail the whole request if review creation fails
       }
     }
-    // === END NEW CODE ===
 
     // Create data_uploads record
     const { data: uploadRecord, error: uploadError } = await supabase
@@ -461,6 +399,7 @@ export async function POST(request: NextRequest) {
           role: "assistant",
           content: autoAnalysis.executiveSummary,
           metadata: {
+            orchestrator_data: autoAnalysis.orchestratorData,
             cost: autoAnalysis.cost,
             equipment: autoAnalysis.equipment,
             quality: autoAnalysis.quality,
