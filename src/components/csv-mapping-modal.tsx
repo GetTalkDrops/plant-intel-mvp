@@ -3,11 +3,28 @@ import { useState, useEffect } from "react";
 import { type ColumnMapping } from "@/lib/csv/csvMapper";
 import { MappingRow } from "./mapping-row";
 
+interface DataTierInfo {
+  tier: 1 | 2 | 3;
+  name: string;
+  description: string;
+  capabilities: string[];
+  missingForNextTier: string[];
+}
+
+interface ValidationInfo {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
 interface MappingModalProps {
   isOpen: boolean;
   fileName: string;
   mappings: ColumnMapping[];
   unmappedColumns: string[];
+  dataTier?: DataTierInfo;
+  validation?: ValidationInfo;
+  confidence?: number;
   onConfirm: (confirmedMappings: ColumnMapping[], name: string) => void;
   onCancel: () => void;
   usingSavedMapping?: boolean;
@@ -40,6 +57,9 @@ export function CsvMappingModal({
   fileName,
   mappings,
   unmappedColumns,
+  dataTier,
+  validation,
+  confidence = 0,
   onConfirm,
   onCancel,
   usingSavedMapping = false,
@@ -127,6 +147,57 @@ export function CsvMappingModal({
         <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
           File: <span className="font-semibold">{fileName}</span>
         </p>
+        {/* Data Tier Display */}
+        {dataTier && (
+          <div
+            className={`mb-4 border rounded-lg p-4 ${
+              dataTier.tier === 1
+                ? "bg-yellow-50 border-yellow-200"
+                : dataTier.tier === 2
+                ? "bg-blue-50 border-blue-200"
+                : "bg-green-50 border-green-200"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-semibold">{dataTier.name}</span>
+                <span className="px-2 py-0.5 text-xs font-medium bg-white rounded">
+                  Tier {dataTier.tier}
+                </span>
+              </div>
+              {confidence > 0 && (
+                <span className="text-sm font-medium">
+                  {Math.round(confidence * 100)}% confidence
+                </span>
+              )}
+            </div>
+            <p className="text-sm mb-2">{dataTier.description}</p>
+            {dataTier.missingForNextTier &&
+              dataTier.missingForNextTier.length > 0 && (
+                <p className="text-xs mt-2 pt-2 border-t border-current/20">
+                  Add{" "}
+                  <strong>
+                    {dataTier.missingForNextTier[0].replace(/_/g, " ")}
+                  </strong>{" "}
+                  to unlock more analysis
+                </p>
+              )}
+          </div>
+        )}
+
+        {/* Validation Warnings */}
+        {validation && validation.warnings.length > 0 && (
+          <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <p className="text-sm font-medium text-yellow-800 mb-1">
+              ⚠️ Warnings
+            </p>
+            <ul className="text-xs text-yellow-700 space-y-1">
+              {validation.warnings.map((warning, idx) => (
+                <li key={idx}>• {warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {usingSavedMapping && (
           <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 border-l-4 border-blue-500 rounded">

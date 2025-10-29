@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { csvStorageService } from "@/lib/csv/csv-storage";
 import { isDemoAccount, DEMO_FACILITY_ID } from "@/lib/crm/demo-account";
 import { buildInsightCards } from "@/lib/analytics/insight-builder";
+import { detectDataTier, type MappingResult } from "@/lib/csv/csv-field-mapper";
 
 export async function POST(request: NextRequest) {
   // Get authenticated user
@@ -72,6 +73,14 @@ export async function POST(request: NextRequest) {
 
     console.log(`Successfully stored ${result.recordsInserted} records`);
 
+    // Detect data tier from mappings
+    const mappedFields = mapping.map((m: MappingResult) => m.targetField);
+    const dataTierInfo = detectDataTier(mappedFields);
+
+    console.log(`\n=== DATA TIER DETECTED ===`);
+    console.log(`Tier: ${dataTierInfo.tier} - ${dataTierInfo.tierInfo.name}`);
+    console.log(`Coverage: ${(dataTierInfo.coverage * 100).toFixed(0)}%`);
+
     // Fetch customer's analysis configuration
     let analysisConfig = null;
     try {
@@ -131,6 +140,12 @@ export async function POST(request: NextRequest) {
           batch_id: batchId,
           csv_headers: csvHeaders,
           config: analysisConfig,
+          data_tier: dataTierInfo.tier,
+          data_tier_info: {
+            tier: dataTierInfo.tier,
+            name: dataTierInfo.tierInfo.name,
+            capabilities: dataTierInfo.tierInfo.analysisCapabilities,
+          },
         }),
       });
 
@@ -154,12 +169,33 @@ export async function POST(request: NextRequest) {
 
         let executiveSummary = `**Analysis Complete - ${orchestratorResult.data_tier.tier_name} Data**\n\n`;
 
+        // Add data tier explanation
+        if (dataTierInfo.tier === 1) {
+          executiveSummary += `Your data supports basic cost variance analysis. `;
+        } else if (dataTierInfo.tier === 2) {
+          executiveSummary += `Your data supports supplier and equipment pattern analysis with 30-day baseline trending. `;
+        } else {
+          executiveSummary += `Your data supports full predictive analytics with degradation detection. `;
+        }
+
+        if (dataTierInfo.missingForNextTier.length > 0) {
+          executiveSummary += `Upload data with **${
+            dataTierInfo.missingForNextTier[0]
+          }** to unlock ${
+            dataTierInfo.tierInfo.name === "Basic Analysis"
+              ? "Enhanced"
+              : "Predictive"
+          } Analysis.\n\n`;
+        } else {
+          executiveSummary += `\n\n`;
+        }
+
         if (urgentCount > 0 || notableCount > 0) {
-          executiveSummary += `Found ${urgentCount} urgent issue${
+          executiveSummary += `Found **${urgentCount} urgent issue${
             urgentCount !== 1 ? "s" : ""
-          } and ${notableCount} notable finding${
+          }** and **${notableCount} notable finding${
             notableCount !== 1 ? "s" : ""
-          }.\n\n`;
+          }**.\n\n`;
         }
 
         if (totalImpact > 0) {
@@ -169,7 +205,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (totalSavings > 0) {
-          executiveSummary += `**Potential Savings Identified: $${totalSavings.toLocaleString()}**\n\n`;
+          executiveSummary += `**Potential Savings: $${totalSavings.toLocaleString()}**\n\n`;
         }
 
         executiveSummary += orchestratorResult.data_tier.message;
@@ -185,6 +221,12 @@ export async function POST(request: NextRequest) {
         autoAnalysis = {
           executiveSummary,
           orchestratorData: orchestratorResult,
+          dataTier: {
+            tier: dataTierInfo.tier,
+            name: dataTierInfo.tierInfo.name,
+            capabilities: dataTierInfo.tierInfo.analysisCapabilities,
+            missingForNextTier: dataTierInfo.missingForNextTier,
+          },
           cost: {
             cards: costCards,
             text: `Found ${allInsights.length} cost insights with $${Math.abs(
@@ -331,6 +373,7 @@ export async function POST(request: NextRequest) {
         field_mappings: mapping,
         record_count: result.recordsInserted,
         batch_id: result.batchId,
+        data_tier: dataTierInfo.tier,
       })
       .select()
       .single();
@@ -418,6 +461,7 @@ export async function POST(request: NextRequest) {
       facilityId: result.facilityId,
       demoMode: result.demoMode,
       autoAnalysis,
+      data_tier: dataTierInfo.tier,
     });
   } catch (error) {
     console.error("CSV upload error:", error);

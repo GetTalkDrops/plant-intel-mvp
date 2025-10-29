@@ -323,6 +323,9 @@ export function UnifiedChatInterface() {
           fileName={pendingMapping?.fileName || ""}
           mappings={pendingMapping?.mappings || []}
           unmappedColumns={pendingMapping?.unmappedColumns || []}
+          dataTier={pendingMapping?.dataTier}
+          validation={pendingMapping?.validation}
+          confidence={pendingMapping?.confidence}
           onConfirm={handleMappingConfirm}
           onCancel={handleMappingCancel}
         />
@@ -378,6 +381,9 @@ export function UnifiedChatInterface() {
         fileName={pendingMapping?.fileName || ""}
         mappings={pendingMapping?.mappings || []}
         unmappedColumns={pendingMapping?.unmappedColumns || []}
+        dataTier={pendingMapping?.dataTier}
+        validation={pendingMapping?.validation}
+        confidence={pendingMapping?.confidence}
         onConfirm={handleMappingConfirm}
         onCancel={handleMappingCancel}
       />

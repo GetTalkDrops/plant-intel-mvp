@@ -1,19 +1,36 @@
 /**
- * File Upload Hook - Routes through Next.js API
+ * Enhanced File Upload Hook - with Data Tier Detection & Validation
  */
 
 import { useState } from "react";
 import { type ColumnMapping } from "@/lib/csv/csvMapper";
 import { type ChatMessage } from "@/hooks/useSession";
 
-// Route through Next.js, not Python directly
-const API_BASE = ""; // Empty = same origin (Next.js)
+const API_BASE = "";
+
+export interface DataTierInfo {
+  tier: 1 | 2 | 3;
+  name: string;
+  description: string;
+  capabilities: string[];
+  coverage: number;
+  missingForNextTier: string[];
+}
+
+export interface ValidationInfo {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
 
 export interface PendingMapping {
   fileName: string;
   file: File;
   mappings: ColumnMapping[];
   unmappedColumns: string[];
+  dataTier?: DataTierInfo;
+  validation?: ValidationInfo;
+  confidence?: number;
   usingSavedMapping?: boolean;
   savedFileName?: string;
   savedMappingName?: string;
@@ -38,9 +55,6 @@ export function useFileUpload({
   );
   const [isDragOver, setIsDragOver] = useState(false);
 
-  /**
-   * Step 1: Analyze file - now routes through Next.js
-   */
   const analyzeFile = async (file: File): Promise<boolean> => {
     if (!userEmail) {
       console.error("User email not available");
@@ -48,26 +62,34 @@ export function useFileUpload({
     }
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const fileText = await file.text();
+      const rows = fileText.split("\n").map((row) => row.split(","));
+      const headers = rows[0].map((h) => h.trim());
+      const sampleRows = rows.slice(1, 4);
 
-      // Keep analysis in Python (it works)
-      const response = await fetch("http://localhost:8000/upload/csv/analyze", {
+      console.log("Analyzing file:", file.name);
+      console.log("Headers:", headers);
+
+      const response = await fetch("/api/csv-mapping", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          headers,
+          sampleRows,
+        }),
       });
 
       const result = await response.json();
-      console.log("Analyze result:", result);
+      console.log("Mapping result:", result);
 
-      if (!result.success) {
+      if (!result.success && result.validation?.errors?.length > 0) {
         setMessages((prev) => [
           ...prev,
           {
             id: Date.now().toString(),
-            message: `Failed to analyze CSV: ${
-              result.error || "Unknown error"
-            }`,
+            message: `**Failed to analyze CSV**\n\n${result.validation.errors.join(
+              "\n"
+            )}`,
             isUser: false,
             timestamp: new Date().toISOString(),
           },
@@ -75,20 +97,21 @@ export function useFileUpload({
         return false;
       }
 
-      const mappings: ColumnMapping[] = Object.entries(
-        result.mapping_suggestions as Record<string, string>
-      ).map(([targetField, sourceColumn]) => ({
-        sourceColumn,
-        targetField,
-        confidence: 0.9,
-        dataType: inferDataType(targetField),
+      const mappings: ColumnMapping[] = result.mappings.map((m: any) => ({
+        sourceColumn: m.sourceColumn,
+        targetField: m.targetField,
+        confidence: m.confidence,
+        dataType: m.dataType,
       }));
 
       setPendingMapping({
         fileName: file.name,
         file,
         mappings,
-        unmappedColumns: result.unmapped_columns || [],
+        unmappedColumns: result.unmappedColumns || [],
+        dataTier: result.dataTier,
+        validation: result.validation,
+        confidence: result.confidence,
         usingSavedMapping: false,
       });
 
@@ -111,9 +134,6 @@ export function useFileUpload({
     }
   };
 
-  /**
-   * Step 2: Upload through Next.js - triggers auto-analysis
-   */
   const uploadFileToBackend = async (
     file: File,
     confirmedMappings: ColumnMapping[]
@@ -126,27 +146,28 @@ export function useFileUpload({
     setIsLoading(true);
 
     try {
-      // Read file as text
       const fileText = await file.text();
       const rows = fileText.split("\n").map((row) => row.split(","));
-      const headers = rows[0];
+      const headers = rows[0].map((h) => h.trim());
       const dataRows = rows
         .slice(1)
         .filter((row) => row.length === headers.length);
 
-      // Map data using confirmed mappings
       const mappedData = dataRows.map((row) => {
         const obj: Record<string, string> = {};
         confirmedMappings.forEach((mapping) => {
           const sourceIndex = headers.indexOf(mapping.sourceColumn);
           if (sourceIndex !== -1) {
-            obj[mapping.targetField] = row[sourceIndex];
+            obj[mapping.targetField] = row[sourceIndex].trim();
           }
         });
         return obj;
       });
 
-      // Changed: Now goes to Next.js upload-csv route
+      console.log(
+        `Uploading ${mappedData.length} rows with ${confirmedMappings.length} fields`
+      );
+
       const response = await fetch("/api/upload-csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -163,12 +184,21 @@ export function useFileUpload({
       const result = await response.json();
 
       if (result.success) {
-        // Extract auto-analysis
         const autoAnalysis = result.autoAnalysis;
+        const dataTier = result.dataTier;
 
-        let message = `**Upload Successful!**\n\n`;
-        message += `• Uploaded ${result.recordsInserted} work orders\n`;
-        message += `• File: ${file.name}\n\n`;
+        let message = `**✓ Upload Successful!**\n\n`;
+        message += `Uploaded **${result.recordsInserted}** work orders\n`;
+        message += `File: ${file.name}\n\n`;
+
+        if (dataTier) {
+          message += `**${dataTier.name}** (Tier ${dataTier.tier})\n`;
+          message += `${dataTier.description}\n\n`;
+
+          if (dataTier.missingForNextTier?.length > 0) {
+            message += `💡 *Tip: Add **${dataTier.missingForNextTier[0]}** to unlock more analysis*\n\n`;
+          }
+        }
 
         if (autoAnalysis && !autoAnalysis.error) {
           message += autoAnalysis.executiveSummary;
@@ -291,23 +321,6 @@ export function useFileUpload({
     handleDrop,
     handleFileInput,
   };
-}
-
-function inferDataType(
-  fieldName: string
-): "string" | "number" | "date" | "boolean" {
-  if (
-    fieldName.includes("cost") ||
-    fieldName.includes("hours") ||
-    fieldName.includes("quantity") ||
-    fieldName.includes("scrapped")
-  ) {
-    return "number";
-  }
-  if (fieldName.includes("date") || fieldName.includes("period")) {
-    return "date";
-  }
-  return "string";
 }
 
 async function generateFileHash(text: string): Promise<string> {
