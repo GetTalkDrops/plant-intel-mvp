@@ -362,7 +362,33 @@ export async function POST(request: NextRequest) {
         // Don't fail the whole request if review creation fails
       }
     }
+    // Save mapping to csv_mappings table for future use
+    const headers = mapping.map((m: any) => m.sourceColumn);
+    const headerSig = JSON.stringify(headers);
+    const facilityId = isDemoAccount(userEmail) ? DEMO_FACILITY_ID : 2;
 
+    // Delete existing mapping with same signature
+    await supabase
+      .from("csv_mappings")
+      .delete()
+      .eq("user_email", userEmail)
+      .eq("header_signature", headerSig);
+
+    // Insert new mapping
+    const { error: mappingError } = await supabase.from("csv_mappings").insert({
+      user_email: userEmail,
+      facility_id: facilityId,
+      name: mappingName || fileName,
+      file_name: fileName,
+      header_signature: headerSig,
+      mapping_config: mapping,
+    });
+
+    if (mappingError) {
+      console.error("Failed to save mapping:", mappingError);
+    } else {
+      console.log("Mapping saved successfully");
+    }
     // Create data_uploads record
     const { data: uploadRecord, error: uploadError } = await supabase
       .from("data_uploads")

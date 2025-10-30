@@ -70,6 +70,24 @@ export function useFileUpload({
       console.log("Analyzing file:", file.name);
       console.log("Headers:", headers);
 
+      // STEP 1: Check for saved mapping first
+      const savedMappingResponse = await fetch(
+        `/api/csv-mapping/saved?headerSignature=${encodeURIComponent(
+          JSON.stringify(headers)
+        )}&userEmail=${encodeURIComponent(userEmail)}`
+      );
+      const savedMappingResult = await savedMappingResponse.json();
+
+      if (savedMappingResult.found) {
+        console.log("Found saved mapping:", savedMappingResult.name);
+
+        // Use saved mapping - skip modal and upload directly
+        const savedMappings: ColumnMapping[] = savedMappingResult.mapping;
+        await uploadFileToBackend(file, savedMappings);
+        return true;
+      }
+
+      // STEP 2: No saved mapping - do auto-mapping
       const response = await fetch("/api/csv-mapping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -147,6 +147,13 @@ export async function PATCH(
     }
 
     const updateData: UpdateData = {};
+    if (name !== undefined) {
+      updateData.name = name;
+    }
+    if (mapping_config !== undefined) {
+      updateData.mapping_config = mapping_config;
+    }
+
     const { error } = await supabase
       .from("csv_mappings")
       .update(updateData)
