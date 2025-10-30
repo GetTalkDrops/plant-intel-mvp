@@ -200,7 +200,21 @@ function buildNarrative(
 
   // Phase 4: Rich narrative
   if (insight.narrative) {
-    parts.push(insight.narrative);
+    // Handle both string and object narratives
+    if (typeof insight.narrative === "string") {
+      parts.push(insight.narrative);
+    } else if (typeof insight.narrative === "object") {
+      const narrative = insight.narrative as any;
+      const formatted = [
+        narrative.headline,
+        narrative.what_happening,
+        narrative.why_matters,
+        narrative.recommended_action,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      parts.push(formatted);
+    }
   }
 
   return parts.length > 0 ? parts.join(" • ") : undefined;

@@ -59,6 +59,13 @@ export function UnifiedChatInterface() {
     sessionId: stableSessionId,
   });
 
+  console.log(
+    "UnifiedChatInterface - messages count:",
+    messages.length,
+    "sessionId:",
+    stableSessionId
+  );
+
   const {
     showMappingModal,
     pendingMapping,

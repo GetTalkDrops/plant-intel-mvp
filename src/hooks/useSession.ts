@@ -194,6 +194,7 @@ export function useSession({
     if (!userEmail) return;
 
     const loadSession = async () => {
+      console.log("Loading session, sessionId:", sessionId);
       // If no session param, clear messages and show landing page
       if (!sessionId) {
         setMessages([]);
@@ -204,6 +205,7 @@ export function useSession({
       setIsLoadingSession(true);
 
       try {
+        console.log("Querying for session ID:", parseInt(sessionId));
         // Load specific session from URL
         const { data: sessions } = await supabase
           .from("chat_sessions")
@@ -211,6 +213,7 @@ export function useSession({
           .eq("id", parseInt(sessionId))
           .eq("user_id", userEmail)
           .limit(1);
+        console.log("Sessions found:", sessions);
 
         if (!sessions || sessions.length === 0) {
           setIsLoadingSession(false);
@@ -226,10 +229,15 @@ export function useSession({
           .eq("session_id", session.id)
           .order("created_at", { ascending: true });
 
+        console.log("Messages loaded:", savedMessages?.length || 0, "messages");
+
         if (savedMessages && savedMessages.length > 0) {
           const loadedMessages = reconstructMessagesFromSaved(savedMessages);
+          console.log("Reconstructed messages:", loadedMessages);
           setMessages(loadedMessages);
-          setCumulativeSavings(session.total_savings || 0);
+        } else {
+          // Clear messages if session has no messages
+          setMessages([]);
         }
       } catch (error) {
         console.error("Failed to load session:", error);

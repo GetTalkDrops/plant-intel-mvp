@@ -12,6 +12,7 @@ interface InsightCardProps {
 }
 
 export function InsightCard({ card }: InsightCardProps) {
+  console.log("InsightCard received:", card);
   const [expandedSections, setExpandedSections] = useState<Set<number>>(
     new Set()
   );

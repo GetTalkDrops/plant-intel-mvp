@@ -457,6 +457,8 @@ export async function POST(request: NextRequest) {
 
     // Save initial messages
     if (sessionRecord && autoAnalysis) {
+      console.log("Attempting to save messages for session:", sessionRecord.id);
+
       const messages = [
         {
           session_id: sessionRecord.id,
@@ -477,7 +479,10 @@ export async function POST(request: NextRequest) {
         },
       ];
 
-      await supabase.from("chat_messages").insert(messages);
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .insert(messages);
+      console.log("Message insert result:", { success: !error, error, data });
     }
 
     return NextResponse.json({

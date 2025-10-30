@@ -59,10 +59,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log("Sessions to delete:", sessions);
+    console.log("Session IDs:", sessionIds);
+
     // Get upload IDs and batch IDs to delete associated data
     const uploadIds = sessions
       .map((s) => s.upload_id)
       .filter((id): id is string => id !== null);
+
+    console.log("Upload IDs:", uploadIds);
 
     let batchIds: string[] = [];
     if (uploadIds.length > 0) {
@@ -76,32 +81,32 @@ export async function POST(request: NextRequest) {
         .filter((id): id is string => id !== null);
     }
 
-    // Delete in order: messages, work orders, uploads, sessions
+    // Delete in correct order to avoid foreign key violations
     const deletePromises = [];
 
-    // 1. Delete chat messages
+    // 1. Delete chat messages first (they reference session_id)
     deletePromises.push(
       supabase.from("chat_messages").delete().in("session_id", sessionIds)
     );
 
-    // 2. Delete work orders (raw data)
+    // 2. Delete chat sessions (they reference upload_id)
+    deletePromises.push(
+      supabase.from("chat_sessions").delete().in("id", sessionIds)
+    );
+
+    // 3. Delete work orders (they reference batch_id)
     if (batchIds.length > 0) {
       deletePromises.push(
         supabase.from("work_orders").delete().in("uploaded_csv_batch", batchIds)
       );
     }
 
-    // 3. Delete data uploads
+    // 4. Delete data uploads last (nothing else references them)
     if (uploadIds.length > 0) {
       deletePromises.push(
         supabase.from("data_uploads").delete().in("id", uploadIds)
       );
     }
-
-    // 4. Delete chat sessions
-    deletePromises.push(
-      supabase.from("chat_sessions").delete().in("id", sessionIds)
-    );
 
     const results = await Promise.all(deletePromises);
 
