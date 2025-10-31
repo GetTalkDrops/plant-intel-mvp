@@ -1,0 +1,58 @@
+{
+  "success": true,
+  "data_tier": {
+    "tier": 2,
+    "tier_name": "Good",
+    "capabilities": [
+      "Detect material cost patterns",
+      "Identify supplier issues",
+      "Track recurring variances"
+    ],
+    "message": "Good Data Tier - Unlocking: Detect material cost patterns, Identify supplier issues\n\nTo unlock Excellent tier insights, add these columns next time: Equipment Id",
+    "missing_for_next_tier": [
+      "Equipment Id"
+    ]
+  },
+  "insights": {
+    "urgent": [],
+    "notable": [],
+    "background": [],
+    "summary": {
+      "total_insights": 0,
+      "urgent_count": 0,
+      "notable_count": 0,
+      "background_count": 0,
+      "total_financial_impact": 0
+    }
+  },
+  "analyzer_details": {
+    "analyzers_run": [
+      "cost_analyzer"
+    ],
+    "cost_analyzer": {
+      "status": "error",
+      "error": "no_data"
+    },
+    "equipment_predictor": {
+      "status": "not_run"
+    },
+    "quality_analyzer": {
+      "status": "not_run"
+    },
+    "efficiency_analyzer": {
+      "status": "not_run"
+    }
+  },
+  "baseline_updates": {
+    "material_costs": 21,
+    "labor_hours": 1,
+    "scrap_rates": 7,
+    "equipment_performance": 16
+  },
+  "metadata": {
+    "batch_id": "test_123",
+    "facility_id": 1,
+    "analysis_timestamp": "2025-10-30T14:58:36.182157",
+    "processing_time_seconds": 9.54
+  }
+}

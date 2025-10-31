@@ -60,8 +60,8 @@ interface BaseInsight {
     trend_text: string;
   };
 
-  // Phase 4: Rich narrative
-  narrative?: string;
+  // Phase 4: Rich narrative (can be string or object)
+  narrative?: string | Record<string, unknown>;
 }
 
 /**
@@ -184,37 +184,46 @@ function buildNarrative(
 ): string | undefined {
   const parts: string[] = [];
 
-  // Phase 1: Basic info
-  const basic = getBasicInfo(insight, category);
+  // Check if insight has nested structure from ML service
+  const actualInsight = (insight as Record<string, unknown>).data || insight;
+  const narrativeData = (insight as Record<string, unknown>).narrative;
+
+  // Phase 4a: Use Claude's enhanced narrative if it's a string
+  if (narrativeData && typeof narrativeData === "string") {
+    return narrativeData;
+  }
+
+  // Phase 4b: Use ML service structured narrative if it's an object
+  if (narrativeData && typeof narrativeData === "object") {
+    const narrativeObj = narrativeData as Record<string, unknown>;
+    const sections = [
+      narrativeObj.headline,
+      narrativeObj.what_happening,
+      narrativeObj.why_matters,
+      narrativeObj.recommended_action,
+    ]
+      .filter(Boolean)
+      .filter((s): s is string => typeof s === "string");
+
+    if (sections.length > 0) {
+      return sections.join("\n\n");
+    }
+  }
+
+  // Fallback: Phase 1 - Basic info
+  const basic = getBasicInfo(actualInsight as BaseInsight, category);
   if (basic) parts.push(basic);
 
   // Phase 2: Baseline comparison
-  if (insight.baseline_comparison) {
-    parts.push(insight.baseline_comparison.deviation_text);
+  const baseline = (actualInsight as BaseInsight).baseline_comparison;
+  if (baseline) {
+    parts.push(baseline.deviation_text);
   }
 
   // Phase 3: Trend analysis
-  if (insight.trend_analysis) {
-    parts.push(insight.trend_analysis.trend_text);
-  }
-
-  // Phase 4: Rich narrative
-  if (insight.narrative) {
-    // Handle both string and object narratives
-    if (typeof insight.narrative === "string") {
-      parts.push(insight.narrative);
-    } else if (typeof insight.narrative === "object") {
-      const narrative = insight.narrative as any;
-      const formatted = [
-        narrative.headline,
-        narrative.what_happening,
-        narrative.why_matters,
-        narrative.recommended_action,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      parts.push(formatted);
-    }
+  const trend = (actualInsight as BaseInsight).trend_analysis;
+  if (trend) {
+    parts.push(trend.trend_text);
   }
 
   return parts.length > 0 ? parts.join(" • ") : undefined;

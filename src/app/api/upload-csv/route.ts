@@ -128,8 +128,11 @@ export async function POST(request: NextRequest) {
 
       // Get CSV headers from mapping
       const csvHeaders = mapping
-        .map((m: any) => m.sourceColumn)
-        .filter((h: any) => h !== null && h !== undefined);
+        .map((m: MappingResult) => m.sourceColumn)
+        .filter(
+          (h: string | null | undefined): h is string =>
+            h !== null && h !== undefined
+        );
 
       // Call the new orchestrator endpoint
       const response = await fetch("http://localhost:8000/analyze/auto", {
@@ -150,6 +153,46 @@ export async function POST(request: NextRequest) {
       });
 
       const orchestratorResult = await response.json();
+
+      console.log("=== FULL ML RESULTS ===");
+
+      console.log(JSON.stringify(orchestratorResult, null, 2));
+
+      // Enhance investigations with Claude (not individual insights)
+      if (orchestratorResult.success && orchestratorResult.investigations) {
+        console.log(
+          `\n=== ENHANCING ${orchestratorResult.investigations.length} INVESTIGATIONS ===`
+        );
+
+        for (const investigation of orchestratorResult.investigations) {
+          try {
+            const enhanceResponse = await fetch(
+              `${request.nextUrl.origin}/api/enhance-investigation`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ investigation }),
+              }
+            );
+
+            if (enhanceResponse.ok) {
+              const enhanced = await enhanceResponse.json();
+              if (enhanced.narrative) {
+                investigation.narrative = enhanced.narrative;
+                console.log(`✓ Enhanced investigation: ${investigation.title}`);
+              }
+            }
+          } catch (err) {
+            console.error(
+              `Failed to enhance investigation ${investigation.id}:`,
+              err
+            );
+          }
+        }
+
+        console.log("=== ENHANCED INVESTIGATIONS ===");
+        console.log(JSON.stringify(orchestratorResult.investigations, null, 2));
+      }
 
       console.log("Orchestrator response:", {
         success: orchestratorResult.success,
@@ -363,7 +406,7 @@ export async function POST(request: NextRequest) {
       }
     }
     // Save mapping to csv_mappings table for future use
-    const headers = mapping.map((m: any) => m.sourceColumn);
+    const headers = mapping.map((m: MappingResult) => m.sourceColumn);
     const headerSig = JSON.stringify(headers);
     const facilityId = isDemoAccount(userEmail) ? DEMO_FACILITY_ID : 2;
 

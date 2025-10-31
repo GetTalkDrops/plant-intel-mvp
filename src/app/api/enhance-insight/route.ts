@@ -35,14 +35,10 @@ interface Insight {
   narrative?: InsightNarrative;
 }
 
-interface RequestBody {
-  insight: Insight;
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as RequestBody;
-    const insight = body.insight;
+    const body = await request.json();
+    const insight = body.insight as Insight;
 
     const prompt = buildForensicPrompt(insight);
 
@@ -89,27 +85,22 @@ Create a 4-paragraph forensic narrative:
    - Be specific with numbers and timeframes
    - Mention exact work order and dollar amounts
    - If baseline data shows material is "X vs your typical Y", include that comparison
-   - Example: "Work order AUTO-PROD-1012 exceeded plan by $5,527. Material STEEL-304L cost $15,945 vs your typical $11,160 (43% higher)."
 
 2. WHY IT MATTERS (2 sentences):
    - Financial impact and projection
    - Business consequences
-   - Example: "At this rate, monthly material costs will exceed budget by $127K. This represents 18% of your quarterly cost allowance."
 
 3. ROOT CAUSE (2 sentences):
    - What's driving the variance
    - Be specific about material vs labor
-   - Example: "Primary driver is material cost variance. Labor efficiency is within normal range."
 
 4. RECOMMENDED ACTION (2-3 sentences):
    - Specific next step with timeline
    - Who to contact or what to investigate
-   - Example: "Contact supplier SUP-AUTO-001 within 48 hours to audit STEEL-304L pricing. Get alternative quotes from backup suppliers by Friday."
 
 CRITICAL RULES:
 - Use ONLY the numbers provided above
-- Be specific (not "material costs increased" but "STEEL-304L increased 43%")
-- Include dollar amounts with $ and commas
+- Be specific with material names and dollar amounts
 - NO generic statements like "review performance"
 - If baseline comparison is available, use it prominently
 

@@ -110,9 +110,26 @@ class AutoAnalysisOrchestrator:
                 quality_results=analyzer_results.get('quality_analyzer'),
                 efficiency_results=analyzer_results.get('efficiency_analyzer')
             )
-            
-            # Step 5: Format response
-            formatted_insights = self.prioritizer.format_prioritized_feed(prioritized)
+
+            # Step 5: Create investigations from urgent insights
+            all_insights = prioritized.get('urgent', []) + prioritized.get('notable', [])
+
+            # DEBUG: Show insight structure
+            if len(all_insights) > 0:
+                print("\n=== SAMPLE INSIGHT STRUCTURE ===")
+                sample = all_insights[0]
+                print(f"Type: {sample.insight_type}")
+                print(f"Source: {sample.source_analyzer}")
+                print(f"Data keys: {list(sample.insight_data.keys())}")
+                if 'root_cause' in sample.insight_data:
+                    print(f"Root cause: {sample.insight_data['root_cause']}")
+                if 'correlations' in sample.insight_data:
+                    print(f"Correlations: {sample.insight_data['correlations']}")
+
+            investigations = self._create_investigations(all_insights)
+
+            # Step 6: Format response
+            formatted_insights = self.prioritizer.format_prioritized_feed(prioritized)      
             
             # Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -127,6 +144,7 @@ class AutoAnalysisOrchestrator:
                     'missing_for_next_tier': tier.missing_for_next_tier
                 },
                 'insights': formatted_insights,
+                'investigations': investigations,
                 'analyzer_details': {
                     'analyzers_run': list(analyzer_results.keys()),
                     'cost_analyzer': self._summarize_analyzer_result(analyzer_results.get('cost_analyzer')),
@@ -303,6 +321,73 @@ class AutoAnalysisOrchestrator:
             return summary
         
         return {'status': 'unknown'}
+    
+    def _create_investigations(self, insights):
+        """Group related insights into investigation summaries"""
+        from datetime import datetime
+        
+        try:
+            investigations = []
+            processed_ids = set()  # Track IDs, not objects
+            
+            # Group 1: Multiple material/supplier patterns (potential supplier crisis)
+            material_patterns = [
+                i for i in insights
+                if i.insight_type == 'pattern' 
+                and i.insight_data.get('type') in ['material', 'supplier']
+                and i.insight_data.get('identifier') not in processed_ids
+            ]
+            
+            print(f"\n=== INVESTIGATION GROUPING ===")
+            print(f"Total insights: {len(insights)}")
+            print(f"Material patterns found: {len(material_patterns)}")
+            
+            if len(material_patterns) >= 2:
+                total_impact = sum([i.financial_impact for i in material_patterns])
+                
+                investigation = {
+                    'type': 'investigation_summary',
+                    'id': f"inv_supplier_{int(datetime.now().timestamp())}",
+                    'title': 'Supplier Change Crisis',
+                    'total_impact': total_impact,
+                    'trend': self._aggregate_trends(material_patterns),
+                    'connected_insights': [
+                        f"{i.source_analyzer}_{i.insight_type}_{i.insight_data.get('identifier', 'unknown')}"
+                        for i in material_patterns
+                    ],
+                    'priority': 'URGENT' if any(str(i.priority_level) == 'urgent' for i in material_patterns) else 'NOTABLE',
+                    'insight_count': len(material_patterns),
+                    'materials_affected': [
+                        i.insight_data.get('identifier', 'Unknown')
+                        for i in material_patterns
+                    ]
+                }
+                investigations.append(investigation)
+                
+                # Track processed IDs
+                for i in material_patterns:
+                    processed_ids.add(i.insight_data.get('identifier'))
+                
+                print(f"Created 1 investigation with {len(material_patterns)} patterns")
+            
+            return investigations
+            
+        except Exception as e:
+            print(f"\n!!! ERROR IN INVESTIGATION GROUPING: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _aggregate_trends(self, insights):
+        """Aggregate trend status across multiple insights"""
+        statuses = [i.insight_data.get('trend', {}).get('status', 'STABLE') for i in insights]
+        
+        if 'ACCELERATING' in statuses:
+            return {'status': 'ACCELERATING', 'direction': '↗'}
+        elif 'DECELERATING' in statuses:
+            return {'status': 'DECELERATING', 'direction': '↘'}
+        else:
+            return {'status': 'STABLE', 'direction': '→'}
 
 
 # Example usage
