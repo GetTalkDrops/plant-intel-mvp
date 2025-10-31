@@ -14,6 +14,7 @@ export type ChatMessage = {
   timestamp: string;
   cards?: InsightCard[];
   followUps?: string[];
+  investigations?: unknown[];
 };
 
 type SavedMessage = {
@@ -22,6 +23,9 @@ type SavedMessage = {
   role: string;
   content: string;
   metadata: {
+    orchestrator_data?: {
+      investigations?: unknown[];
+    };
     cost?: {
       text: string;
       cards?: InsightCard[];
@@ -88,6 +92,7 @@ function reconstructMessagesFromSaved(
         message: msg.content,
         isUser: false,
         timestamp: formatTimestamp(msg.created_at),
+        investigations: msg.metadata.orchestrator_data?.investigations,
       });
 
       // Cost analysis

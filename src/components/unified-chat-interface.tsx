@@ -358,6 +358,7 @@ export function UnifiedChatInterface() {
               message={message.message}
               isUser={message.isUser}
               timestamp={message.timestamp}
+              investigations={message.investigations}
               cards={message.cards}
               followUps={message.followUps}
             />

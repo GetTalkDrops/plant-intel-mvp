@@ -1,11 +1,14 @@
 // src/components/message-bubble.tsx
 import { InsightCard as InsightCardType } from "@/lib/analytics/insight-types";
 import { InsightCard } from "./insight-card";
+import { AlertCircle } from "lucide-react";
+import { InvestigationCard, type Investigation } from "./investigation-card";
 
 interface MessageBubbleProps {
   message: string;
   isUser: boolean;
   timestamp?: string;
+  investigations?: unknown[];
   cards?: InsightCardType[];
   followUps?: string[];
 }
@@ -14,9 +17,11 @@ export function MessageBubble({
   message,
   isUser,
   timestamp,
+  investigations,
   cards,
   followUps,
 }: MessageBubbleProps) {
+  console.log("MessageBubble investigations:", investigations);
   if (isUser) {
     // User messages - right-aligned, clean
     return (
@@ -90,7 +95,21 @@ export function MessageBubble({
               );
             })}
           </div>
-
+          {/* Investigations */}
+          {investigations && investigations.length > 0 && (
+            <div className="mt-4 space-y-3">
+              <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                Critical Investigations
+              </h3>
+              {investigations.map((inv, idx: number) => (
+                <InvestigationCard
+                  key={idx}
+                  investigation={inv as Investigation}
+                />
+              ))}
+            </div>
+          )}
           {/* Insight Cards */}
           {cards && cards.length > 0 && (
             <div className="mt-2 sm:mt-3 space-y-2 sm:space-y-3">

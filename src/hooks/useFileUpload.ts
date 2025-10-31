@@ -115,12 +115,20 @@ export function useFileUpload({
         return false;
       }
 
-      const mappings: ColumnMapping[] = result.mappings.map((m: any) => ({
-        sourceColumn: m.sourceColumn,
-        targetField: m.targetField,
-        confidence: m.confidence,
-        dataType: m.dataType,
-      }));
+      const mappings: ColumnMapping[] = result.mappings.map((m: unknown) => {
+        const mapping = m as {
+          sourceColumn: string;
+          targetField: string;
+          confidence: number;
+          dataType: string;
+        };
+        return {
+          sourceColumn: mapping.sourceColumn,
+          targetField: mapping.targetField,
+          confidence: mapping.confidence,
+          dataType: mapping.dataType,
+        };
+      });
 
       setPendingMapping({
         fileName: file.name,
@@ -222,11 +230,20 @@ export function useFileUpload({
           message += autoAnalysis.executiveSummary;
         }
 
+        console.log(
+          "autoAnalysis.orchestratorData:",
+          autoAnalysis?.orchestratorData
+        );
+        console.log(
+          "investigations:",
+          autoAnalysis?.orchestratorData?.investigations
+        );
         const successMessage: ChatMessage = {
           id: Date.now().toString(),
           message,
           isUser: false,
           timestamp: new Date().toISOString(),
+          investigations: autoAnalysis?.orchestratorData?.investigations,
           cards: [
             ...(autoAnalysis?.cost?.cards || []),
             ...(autoAnalysis?.equipment?.cards || []),
@@ -234,6 +251,8 @@ export function useFileUpload({
             ...(autoAnalysis?.efficiency?.cards || []),
           ],
         };
+
+        console.log("successMessage being created:", successMessage);
 
         setMessages((prev) => [...prev, successMessage]);
 
