@@ -4,15 +4,12 @@
  */
 
 import { useState } from "react";
+import { DEFAULT_ANALYSIS_CONFIG } from "@/lib/csv/csv-config-defaults";
+import type { AnalysisConfig } from "@/lib/csv/csv-config-defaults";
 
 // ==================== TYPE DEFINITIONS ====================
 
-export interface AnalysisConfig {
-  labor_rate_hourly: number;
-  scrap_cost_per_unit: number;
-  variance_threshold_pct: number;
-  pattern_min_orders: number;
-}
+export type { AnalysisConfig };
 
 export interface FieldMapping {
   sourceColumn: string;
@@ -48,10 +45,18 @@ export interface TemplateMatch {
 // FIXED: Export as useFileUploadV2
 export function useFileUploadV2() {
   const [uploadState, setUploadState] = useState<
-    "idle" | "mapping" | "tier-preview" | "uploading" | "complete"
+    | "idle"
+    | "template-confirmation"
+    | "mapping"
+    | "tier-preview"
+    | "uploading"
+    | "complete"
   >("idle");
 
   const [mappingData, setMappingData] = useState<MappingData | null>(null);
+  const [templateMatch, setTemplateMatch] = useState<TemplateMatch | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
 
   // Step 1: File selected, parse and get fuzzy mappings
@@ -76,47 +81,81 @@ export function useFileUploadV2() {
       const { mappings } = await response.json();
 
       // Check for existing template
-      const templateMatch = await checkForTemplate(headers);
+      const template = await checkForTemplate(headers);
 
-      if (templateMatch) {
-        // Template found - pre-fill everything
-        setMappingData({
-          file,
-          headers,
-          sampleRows,
-          initialMappings: templateMatch.mappings,
-          finalMappings: templateMatch.mappings,
-          analysisConfig: templateMatch.analysisConfig,
-          templateName: templateMatch.name,
-        });
+      // Store basic mapping data
+      setMappingData({
+        file,
+        headers,
+        sampleRows,
+        initialMappings: mappings,
+        analysisConfig: getDefaultConfig(),
+      });
+
+      if (template) {
+        // Template found - show confirmation screen
+        setTemplateMatch(template);
+        setUploadState("template-confirmation");
       } else {
-        // No template - use fuzzy results
-        setMappingData({
-          file,
-          headers,
-          sampleRows,
-          initialMappings: mappings,
-          analysisConfig: getDefaultConfig(),
-        });
+        // No template - go directly to mapping
+        setUploadState("mapping");
       }
-
-      setUploadState("mapping");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     }
   };
 
+  // Template confirmation handlers
+  const handleUseTemplate = () => {
+    if (!templateMatch) return;
+
+    setMappingData((prev) => ({
+      ...prev!,
+      finalMappings: templateMatch.mappings,
+      analysisConfig: templateMatch.analysisConfig,
+      templateName: templateMatch.name,
+    }));
+    setUploadState("tier-preview");
+  };
+
+  const handleEditTemplate = () => {
+    if (!templateMatch) return;
+
+    // Pre-fill with template but allow editing
+    setMappingData((prev) => ({
+      ...prev!,
+      initialMappings: templateMatch.mappings,
+      analysisConfig: templateMatch.analysisConfig,
+      templateName: undefined, // User must provide new name
+    }));
+    setTemplateMatch(null);
+    setUploadState("mapping");
+  };
+
+  const handleStartFresh = () => {
+    // Clear template match and use fuzzy mappings
+    setTemplateMatch(null);
+    setUploadState("mapping");
+  };
+
   // Step 2: User confirms mappings + config
   const handleMappingsConfirmed = (
     finalMappings: FieldMapping[],
-    analysisConfig: AnalysisConfig
+    analysisConfig: AnalysisConfig,
+    templateName: string
   ) => {
     setMappingData((prev) => ({
       ...prev!,
       finalMappings,
       analysisConfig,
+      templateName,
     }));
     setUploadState("tier-preview");
+  };
+
+  // Navigate back to mapping from tier preview
+  const handleBackToMapping = () => {
+    setUploadState("mapping");
   };
 
   // Step 3: User confirms tier and proceeds with upload
@@ -168,7 +207,15 @@ export function useFileUploadV2() {
     }
   };
 
-  // Save as template
+  // Cancel and reset
+  const handleCancel = () => {
+    setUploadState("idle");
+    setMappingData(null);
+    setTemplateMatch(null);
+    setError(null);
+  };
+
+  // Save as template (optional, not used in current flow)
   const handleSaveTemplate = async (
     name: string,
     mappings: FieldMapping[],
@@ -199,10 +246,16 @@ export function useFileUploadV2() {
   return {
     uploadState,
     mappingData,
+    templateMatch,
     error,
     handleFileSelected,
+    handleUseTemplate,
+    handleEditTemplate,
+    handleStartFresh,
     handleMappingsConfirmed,
+    handleBackToMapping,
     handleTierConfirmed,
+    handleCancel,
     handleSaveTemplate,
   };
 }
@@ -313,10 +366,5 @@ async function checkForTemplate(
 }
 
 function getDefaultConfig(): AnalysisConfig {
-  return {
-    labor_rate_hourly: 55,
-    scrap_cost_per_unit: 75,
-    variance_threshold_pct: 15,
-    pattern_min_orders: 3,
-  };
+  return DEFAULT_ANALYSIS_CONFIG;
 }

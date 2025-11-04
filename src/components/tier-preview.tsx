@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Check, X, ArrowLeft, DollarSign, Clock } from "lucide-react";
+import { detectDataTier, FIELD_DEFINITIONS } from "@/lib/csv/csv-field-mapper";
 
 interface TierPreviewProps {
   mappedFields: string[];
@@ -24,7 +25,13 @@ export function TierPreview({
   onBack,
   onContinue,
 }: TierPreviewProps) {
-  const tier = detectTier(mappedFields);
+  const tierResult = detectDataTier(mappedFields);
+  const tier = {
+    tier: `Tier ${tierResult.tier}`,
+    name: tierResult.tierInfo.name,
+    description: tierResult.tierInfo.description,
+    missingFields: tierResult.missingForNextTier,
+  };
   const capabilities = getTierCapabilities(tier);
 
   return (
@@ -144,49 +151,6 @@ export function TierPreview({
       </div>
     </div>
   );
-}
-
-function detectTier(fields: string[]) {
-  const hasWorkOrder = fields.includes("work_order_number");
-  const hasCosts =
-    fields.includes("planned_material_cost") &&
-    fields.includes("actual_material_cost");
-  const hasEquipment = fields.includes("machine_id");
-  const hasQuality =
-    fields.includes("units_produced") && fields.includes("units_scrapped");
-  const hasLabor =
-    fields.includes("planned_labor_hours") &&
-    fields.includes("actual_labor_hours");
-
-  if (hasWorkOrder && hasCosts && hasEquipment && hasQuality && hasLabor) {
-    return {
-      tier: "Tier 3",
-      name: "Predictive Analysis",
-      description: "Full capabilities with ML predictions",
-      missingFields: [],
-    };
-  } else if (hasWorkOrder && hasCosts && (hasEquipment || hasQuality)) {
-    return {
-      tier: "Tier 2",
-      name: "Advanced Analytics",
-      description: "Enhanced insights with correlations",
-      missingFields: !hasEquipment
-        ? ["machine_id"]
-        : ["units_produced", "units_scrapped"],
-    };
-  } else {
-    return {
-      tier: "Tier 1",
-      name: "Basic Analysis",
-      description: "Core cost variance detection",
-      missingFields: [
-        "machine_id",
-        "units_produced",
-        "units_scrapped",
-        "labor_hours",
-      ],
-    };
-  }
 }
 
 function getTierCapabilities(tier: any) {
