@@ -1,7 +1,8 @@
-// src/components/file-upload.tsx
+// src/components/file-upload.tsx - ALL ERRORS FIXED
 "use client";
 
-import { useFileUpload } from "@/hooks/useFileUpload";
+import { useFileUploadV2 } from "@/hooks/useFileUploadV2";
+import type { FieldMapping } from "@/hooks/useFileUploadV2";
 import { CSVMappingWithConfig } from "./csv-mapping-with-config";
 import { TierPreview } from "./tier-preview";
 import { UploadDropzone } from "./upload-dropzone";
@@ -16,7 +17,7 @@ export function FileUpload() {
     handleMappingsConfirmed,
     handleTierConfirmed,
     handleSaveTemplate,
-  } = useFileUpload();
+  } = useFileUploadV2();
 
   if (error) {
     return (
@@ -58,7 +59,12 @@ export function FileUpload() {
       {uploadState === "tier-preview" && mappingData && (
         <TierPreview
           mappedFields={
-            mappingData.finalMappings?.map((m) => m.targetField) || []
+            // FIXED: Added proper type annotations
+            (
+              mappingData.finalMappings?.map(
+                (m: FieldMapping) => m.targetField
+              ) || []
+            ).filter((field: string | null): field is string => field !== null)
           }
           analysisConfig={mappingData.analysisConfig}
           onBack={() => {

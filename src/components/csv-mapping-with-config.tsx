@@ -1,4 +1,4 @@
-// src/components/csv-mapping-with-config.tsx - FIXED TYPES
+// src/components/csv-mapping-with-config.tsx - COMPLETELY FIXED
 "use client";
 
 import { useState, useMemo } from "react";
@@ -10,33 +10,21 @@ import {
   ChevronDown,
   ChevronRight,
   Save,
-  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 
 /**
- * PRODUCTION-READY MAPPING COMPONENT WITH CONFIGURATION
+ * PRODUCTION-READY MAPPING COMPONENT - ALL ERRORS FIXED
  *
  * FIXES:
- * - Replaced 'any[][]' with 'string[][]' for sampleRows
- * - Added proper typing throughout
+ * - Removed Select/Tooltip shadcn components (using native)
+ * - Fixed Set<string | null> type mismatch
+ * - Fixed parameter 'v' type annotation
+ * - Fixed Info icon title attribute (wrapped in div)
  */
 
 // ==================== TYPES ====================
@@ -71,7 +59,7 @@ interface AnalysisConfig {
 
 interface CSVMappingWithConfigProps {
   csvHeaders: string[];
-  sampleRows: string[][]; // FIXED: was any[][]
+  sampleRows: string[][];
   initialMappings: MappingRow[];
   defaultConfig?: Partial<AnalysisConfig>;
   templateName?: string;
@@ -138,30 +126,6 @@ const CONFIG_VARIABLES: ConfigVariable[] = [
   },
 ];
 
-// Industry-specific defaults
-const INDUSTRY_DEFAULTS: Record<string, Partial<AnalysisConfig>> = {
-  automotive: {
-    labor_rate_hourly: 55,
-    scrap_cost_per_unit: 45,
-    variance_threshold_pct: 15,
-  },
-  aerospace: {
-    labor_rate_hourly: 85,
-    scrap_cost_per_unit: 250,
-    variance_threshold_pct: 5,
-  },
-  consumer_goods: {
-    labor_rate_hourly: 45,
-    scrap_cost_per_unit: 15,
-    variance_threshold_pct: 20,
-  },
-  electronics: {
-    labor_rate_hourly: 65,
-    scrap_cost_per_unit: 80,
-    variance_threshold_pct: 10,
-  },
-};
-
 // ==================== MAIN COMPONENT ====================
 
 export function CSVMappingWithConfig({
@@ -186,10 +150,14 @@ export function CSVMappingWithConfig({
   const [templateName, setTemplateName] = useState(initialTemplateName || "");
   const [showTemplateInput, setShowTemplateInput] = useState(false);
 
-  // Track which fields are mapped
+  // Track which fields are mapped - FIXED: Filter out null values
   const usedFields = useMemo(
     () =>
-      new Set(mappings.filter((m) => m.targetField).map((m) => m.targetField)),
+      new Set(
+        mappings
+          .filter((m) => m.targetField !== null)
+          .map((m) => m.targetField as string)
+      ),
     [mappings]
   );
 
@@ -380,22 +348,13 @@ export function CSVMappingWithConfig({
                         <span className="text-red-500 ml-1">*</span>
                       )}
                     </Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="w-4 h-4 text-gray-400" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p className="font-medium mb-1">
-                            {variable.description}
-                          </p>
-                          <p className="text-xs mt-2">{variable.helpText}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {variable.example}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    {/* FIXED: Wrap Info icon in div with title attribute */}
+                    <div
+                      className="cursor-help"
+                      title={`${variable.description}\n\n${variable.helpText}\n\nExample: ${variable.example}`}
+                    >
+                      <Info className="w-4 h-4 text-gray-400" />
+                    </div>
                   </div>
 
                   <div className="relative">
@@ -442,7 +401,7 @@ export function CSVMappingWithConfig({
       </div>
 
       {/* ==================== VALIDATION ALERTS ==================== */}
-      {!stats.required && (
+      {stats.required < stats.totalRequired && (
         <Alert variant="destructive">
           <AlertCircle className="w-4 h-4" />
           <AlertTitle>Missing Required Fields</AlertTitle>
@@ -516,7 +475,6 @@ function FieldSelector({
   usedFields: Set<string>;
   onChange: (field: string | null) => void;
 }) {
-  // Simplified field list for production
   const FIELDS = [
     { value: "work_order_number", label: "Work Order Number", required: true },
     { value: "material_code", label: "Material Code" },
@@ -540,31 +498,26 @@ function FieldSelector({
   ];
 
   return (
-    <Select
+    <select
       value={value || "none"}
-      onValueChange={(v) => onChange(v === "none" ? null : v)}
+      onChange={(e) => {
+        const v: string = e.target.value;
+        onChange(v === "none" ? null : v);
+      }}
+      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
     >
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder="Select field..." />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="none">
-          <span className="text-gray-500">Do not map</span>
-        </SelectItem>
-        {FIELDS.map((field) => {
-          const isUsed = usedFields.has(field.value) && value !== field.value;
-          return (
-            <SelectItem key={field.value} value={field.value} disabled={isUsed}>
-              <div className="flex items-center gap-2">
-                {field.label}
-                {field.required && <span className="text-red-500">*</span>}
-                {isUsed && <span className="text-gray-400">(used)</span>}
-              </div>
-            </SelectItem>
-          );
-        })}
-      </SelectContent>
-    </Select>
+      <option value="none">Do not map</option>
+      {FIELDS.map((field) => {
+        const isUsed = usedFields.has(field.value) && value !== field.value;
+        return (
+          <option key={field.value} value={field.value} disabled={isUsed}>
+            {field.label}
+            {field.required && " *"}
+            {isUsed && " (used)"}
+          </option>
+        );
+      })}
+    </select>
   );
 }
 

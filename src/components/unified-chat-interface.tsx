@@ -28,7 +28,7 @@ import {
 } from "@/lib/utils/messageUtils";
 
 // Phase 3: File upload hook
-import { useFileUpload, type PendingMapping } from "@/hooks/useFileUpload";
+import { useFileUpload } from "@/hooks/useFileUpload";
 
 export function UnifiedChatInterface() {
   const { user } = useUser();
