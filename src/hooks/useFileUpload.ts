@@ -1,369 +1,326 @@
+// src/hooks/useFileUpload.ts - FIXED WITH PROPER TYPES
 /**
- * Enhanced File Upload Hook - with Data Tier Detection & Validation
+ * Enhanced file upload hook with configuration management
+ *
+ * FIXES:
+ * - Replaced all 'any' types with proper TypeScript interfaces
+ * - Added type safety for mappings and rows
  */
 
 import { useState } from "react";
-import { type ColumnMapping } from "@/lib/csv/csvMapper";
-import { type ChatMessage } from "@/hooks/useSession";
 
-const API_BASE = "";
+// ==================== TYPE DEFINITIONS ====================
 
-export interface DataTierInfo {
-  tier: 1 | 2 | 3;
-  name: string;
-  description: string;
-  capabilities: string[];
-  coverage: number;
-  missingForNextTier: string[];
+export interface AnalysisConfig {
+  labor_rate_hourly: number;
+  scrap_cost_per_unit: number;
+  variance_threshold_pct: number;
+  pattern_min_orders: number;
 }
 
-export interface ValidationInfo {
-  valid: boolean;
-  errors: string[];
-  warnings: string[];
+export interface FieldMapping {
+  sourceColumn: string;
+  targetField: string | null;
+  confidence: number;
+  matchType: string;
+  dataType: string;
+  required: boolean;
 }
 
-export interface PendingMapping {
-  fileName: string;
+export interface CSVRow {
+  [key: string]: string | number;
+}
+
+export interface MappingData {
   file: File;
-  mappings: ColumnMapping[];
-  unmappedColumns: string[];
-  dataTier?: DataTierInfo;
-  validation?: ValidationInfo;
-  confidence?: number;
-  usingSavedMapping?: boolean;
-  savedFileName?: string;
-  savedMappingName?: string;
+  headers: string[];
+  sampleRows: string[][];
+  initialMappings: FieldMapping[];
+  finalMappings?: FieldMapping[];
+  analysisConfig?: AnalysisConfig;
+  templateName?: string;
 }
 
-interface UseFileUploadProps {
-  userEmail: string | undefined;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  setCumulativeSavings: React.Dispatch<React.SetStateAction<number>>;
+export interface TemplateMatch {
+  name: string;
+  mappings: FieldMapping[];
+  analysisConfig: AnalysisConfig;
 }
 
-export function useFileUpload({
-  userEmail,
-  setMessages,
-  setIsLoading,
-  setCumulativeSavings,
-}: UseFileUploadProps) {
-  const [showMappingModal, setShowMappingModal] = useState(false);
-  const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(
-    null
-  );
-  const [isDragOver, setIsDragOver] = useState(false);
+// ==================== HOOK ====================
 
-  const analyzeFile = async (file: File): Promise<boolean> => {
-    if (!userEmail) {
-      console.error("User email not available");
-      return false;
-    }
+export function useFileUpload() {
+  const [uploadState, setUploadState] = useState<
+    "idle" | "mapping" | "tier-preview" | "uploading" | "complete"
+  >("idle");
 
+  const [mappingData, setMappingData] = useState<MappingData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Step 1: File selected, parse and get fuzzy mappings
+  const handleFileSelected = async (file: File) => {
     try {
-      const fileText = await file.text();
-      const rows = fileText.split("\n").map((row) => row.split(","));
-      const headers = rows[0].map((h) => h.trim());
-      const sampleRows = rows.slice(1, 4);
+      setError(null);
 
-      console.log("Analyzing file:", file.name);
-      console.log("Headers:", headers);
+      // Parse CSV
+      const { headers, sampleRows } = await parseCSV(file);
 
-      // STEP 1: Check for saved mapping first
-      const savedMappingResponse = await fetch(
-        `/api/csv-mapping/saved?headerSignature=${encodeURIComponent(
-          JSON.stringify(headers)
-        )}&userEmail=${encodeURIComponent(userEmail)}`
-      );
-      const savedMappingResult = await savedMappingResponse.json();
-
-      if (savedMappingResult.found) {
-        console.log("Found saved mapping:", savedMappingResult.name);
-
-        // Use saved mapping - skip modal and upload directly
-        const savedMappings: ColumnMapping[] = savedMappingResult.mapping;
-        await uploadFileToBackend(file, savedMappings);
-        return true;
-      }
-
-      // STEP 2: No saved mapping - do auto-mapping
+      // Get fuzzy mapping suggestions
       const response = await fetch("/api/csv-mapping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          headers,
-          sampleRows,
-        }),
+        body: JSON.stringify({ headers, sampleRows }),
       });
 
-      const result = await response.json();
-      console.log("Mapping result:", result);
-
-      if (!result.success && result.validation?.errors?.length > 0) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            message: `**Failed to analyze CSV**\n\n${result.validation.errors.join(
-              "\n"
-            )}`,
-            isUser: false,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-        return false;
+      if (!response.ok) {
+        throw new Error("Failed to analyze CSV");
       }
 
-      const mappings: ColumnMapping[] = result.mappings.map((m: unknown) => {
-        const mapping = m as {
-          sourceColumn: string;
-          targetField: string;
-          confidence: number;
-          dataType: string;
-        };
-        return {
-          sourceColumn: mapping.sourceColumn,
-          targetField: mapping.targetField,
-          confidence: mapping.confidence,
-          dataType: mapping.dataType,
-        };
-      });
+      const { mappings } = await response.json();
 
-      setPendingMapping({
-        fileName: file.name,
-        file,
-        mappings,
-        unmappedColumns: result.unmappedColumns || [],
-        dataTier: result.dataTier,
-        validation: result.validation,
-        confidence: result.confidence,
-        usingSavedMapping: false,
-      });
+      // Check for existing template
+      const templateMatch = await checkForTemplate(headers);
 
-      setShowMappingModal(true);
-      return true;
-    } catch (error) {
-      console.error("File analysis error:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          message: `Error analyzing file: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`,
-          isUser: false,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      return false;
+      if (templateMatch) {
+        // Template found - pre-fill everything
+        setMappingData({
+          file,
+          headers,
+          sampleRows,
+          initialMappings: templateMatch.mappings,
+          finalMappings: templateMatch.mappings,
+          analysisConfig: templateMatch.analysisConfig,
+          templateName: templateMatch.name,
+        });
+      } else {
+        // No template - use fuzzy results
+        setMappingData({
+          file,
+          headers,
+          sampleRows,
+          initialMappings: mappings,
+          analysisConfig: getDefaultConfig(),
+        });
+      }
+
+      setUploadState("mapping");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
     }
   };
 
-  const uploadFileToBackend = async (
-    file: File,
-    confirmedMappings: ColumnMapping[]
+  // Step 2: User confirms mappings + config
+  const handleMappingsConfirmed = (
+    finalMappings: FieldMapping[],
+    analysisConfig: AnalysisConfig
   ) => {
-    if (!userEmail) {
-      console.error("User email not available");
+    setMappingData((prev) => ({
+      ...prev!,
+      finalMappings,
+      analysisConfig,
+    }));
+    setUploadState("tier-preview");
+  };
+
+  // Step 3: User confirms tier and proceeds with upload
+  const handleTierConfirmed = async () => {
+    if (!mappingData?.finalMappings || !mappingData?.analysisConfig) {
+      setError("Missing required data");
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      const fileText = await file.text();
-      const rows = fileText.split("\n").map((row) => row.split(","));
-      const headers = rows[0].map((h) => h.trim());
-      const dataRows = rows
-        .slice(1)
-        .filter((row) => row.length === headers.length);
+      setUploadState("uploading");
 
-      const mappedData = dataRows.map((row) => {
-        const obj: Record<string, string> = {};
-        confirmedMappings.forEach((mapping) => {
-          const sourceIndex = headers.indexOf(mapping.sourceColumn);
-          if (sourceIndex !== -1) {
-            obj[mapping.targetField] = row[sourceIndex].trim();
-          }
-        });
-        return obj;
-      });
-
-      console.log(
-        `Uploading ${mappedData.length} rows with ${confirmedMappings.length} fields`
+      // Map CSV data
+      const mappedData = await mapCSVData(
+        mappingData.file,
+        mappingData.finalMappings
       );
 
+      // Create header signature for storage
+      const headerSignature = JSON.stringify(mappingData.headers);
+      const fileHash = await hashFile(mappingData.file);
+
+      // Upload with configuration
       const response = await fetch("/api/upload-csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mappedData,
-          mapping: confirmedMappings,
-          fileName: file.name,
-          headerSignature: headers.join(","),
-          fileHash: await generateFileHash(fileText),
-          mappingName: file.name,
+          mapping: mappingData.finalMappings,
+          analysisConfig: mappingData.analysisConfig,
+          fileName: mappingData.file.name,
+          headerSignature,
+          fileHash,
+          mappingName: mappingData.templateName,
         }),
       });
 
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
       const result = await response.json();
 
-      if (result.success) {
-        const autoAnalysis = result.autoAnalysis;
-        const dataTier = result.dataTier;
-
-        let message = `**✓ Upload Successful!**\n\n`;
-        message += `Uploaded **${result.recordsInserted}** work orders\n`;
-        message += `File: ${file.name}\n\n`;
-
-        if (dataTier) {
-          message += `**${dataTier.name}** (Tier ${dataTier.tier})\n`;
-          message += `${dataTier.description}\n\n`;
-
-          if (dataTier.missingForNextTier?.length > 0) {
-            message += `💡 *Tip: Add **${dataTier.missingForNextTier[0]}** to unlock more analysis*\n\n`;
-          }
-        }
-
-        if (autoAnalysis && !autoAnalysis.error) {
-          message += autoAnalysis.executiveSummary;
-        }
-
-        console.log(
-          "autoAnalysis.orchestratorData:",
-          autoAnalysis?.orchestratorData
-        );
-        console.log(
-          "investigations:",
-          autoAnalysis?.orchestratorData?.investigations
-        );
-        const successMessage: ChatMessage = {
-          id: Date.now().toString(),
-          message,
-          isUser: false,
-          timestamp: new Date().toISOString(),
-          investigations: autoAnalysis?.orchestratorData?.investigations,
-          cards: [
-            ...(autoAnalysis?.cost?.cards || []),
-            ...(autoAnalysis?.equipment?.cards || []),
-            ...(autoAnalysis?.quality?.cards || []),
-            ...(autoAnalysis?.efficiency?.cards || []),
-          ],
-        };
-
-        console.log("successMessage being created:", successMessage);
-
-        setMessages((prev) => [...prev, successMessage]);
-
-        if (autoAnalysis?.totalSavingsOpportunity) {
-          setCumulativeSavings(
-            (prev) => prev + autoAnalysis.totalSavingsOpportunity
-          );
-        }
-      } else {
-        const errorMessage: ChatMessage = {
-          id: Date.now().toString(),
-          message: `**Upload Failed**\n\n${result.error || "Unknown error"}`,
-          isUser: false,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-      }
-    } catch (error) {
-      console.error("Upload error:", error);
-      const errorMessage: ChatMessage = {
-        id: Date.now().toString(),
-        message: `**Upload Error**\n\n${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-        isUser: false,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
+      setUploadState("complete");
+      return result;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+      setUploadState("idle");
     }
   };
 
-  const handleFileUpload = async (file: File) => {
-    const analyzingMessage: ChatMessage = {
-      id: Date.now().toString(),
-      message: `Analyzing ${file.name}...`,
-      isUser: false,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, analyzingMessage]);
-    await analyzeFile(file);
-  };
-
-  const handleMappingConfirm = async (
-    confirmedMappings: ColumnMapping[],
-    mappingName: string
+  // Save as template
+  const handleSaveTemplate = async (
+    name: string,
+    mappings: FieldMapping[],
+    config: AnalysisConfig
   ) => {
-    setShowMappingModal(false);
-    if (pendingMapping) {
-      await uploadFileToBackend(pendingMapping.file, confirmedMappings);
-      setPendingMapping(null);
-    }
-  };
+    try {
+      const response = await fetch("/api/csv-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          headerSignature: JSON.stringify(mappingData?.headers),
+          mappings,
+          analysisConfig: config,
+        }),
+      });
 
-  const handleMappingCancel = () => {
-    setShowMappingModal(false);
-    setPendingMapping(null);
-    const cancelMessage: ChatMessage = {
-      id: Date.now().toString(),
-      message: "Upload cancelled.",
-      isUser: false,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, cancelMessage]);
-  };
+      if (!response.ok) {
+        throw new Error("Failed to save template");
+      }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      handleFileUpload(file);
-    }
-  };
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileUpload(file);
+      return await response.json();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Template save failed");
     }
   };
 
   return {
-    showMappingModal,
-    pendingMapping,
-    isDragOver,
-    handleFileUpload,
-    handleMappingConfirm,
-    handleMappingCancel,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-    handleFileInput,
+    uploadState,
+    mappingData,
+    error,
+    handleFileSelected,
+    handleMappingsConfirmed,
+    handleTierConfirmed,
+    handleSaveTemplate,
   };
 }
 
-async function generateFileHash(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+// ==================== HELPER FUNCTIONS ====================
+
+async function parseCSV(file: File): Promise<{
+  headers: string[];
+  sampleRows: string[][];
+}> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const lines = text.split("\n").filter((line) => line.trim());
+
+      if (lines.length === 0) {
+        reject(new Error("Empty CSV file"));
+        return;
+      }
+
+      const headers = lines[0]
+        .split(",")
+        .map((h) => h.trim().replace(/"/g, ""));
+      const sampleRows = lines
+        .slice(1, 6)
+        .map((line) =>
+          line.split(",").map((cell) => cell.trim().replace(/"/g, ""))
+        );
+
+      resolve({ headers, sampleRows });
+    };
+
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsText(file);
+  });
+}
+
+async function mapCSVData(
+  file: File,
+  mappings: FieldMapping[]
+): Promise<CSVRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const lines = text.split("\n").filter((line) => line.trim());
+
+      const headers = lines[0]
+        .split(",")
+        .map((h) => h.trim().replace(/"/g, ""));
+      const mappedData: CSVRow[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i]
+          .split(",")
+          .map((v) => v.trim().replace(/"/g, ""));
+        const row: CSVRow = {};
+
+        mappings.forEach((mapping) => {
+          if (mapping.targetField) {
+            const sourceIndex = headers.indexOf(mapping.sourceColumn);
+            if (sourceIndex !== -1) {
+              row[mapping.targetField] = values[sourceIndex];
+            }
+          }
+        });
+
+        if (Object.keys(row).length > 0) {
+          mappedData.push(row);
+        }
+      }
+
+      resolve(mappedData);
+    };
+
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsText(file);
+  });
+}
+
+async function hashFile(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function checkForTemplate(
+  headers: string[]
+): Promise<TemplateMatch | null> {
+  try {
+    const response = await fetch("/api/csv-templates/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ headers }),
+    });
+
+    if (!response.ok) return null;
+
+    const result = await response.json();
+    return result.found ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+function getDefaultConfig(): AnalysisConfig {
+  // Could pull from user profile or industry defaults
+  return {
+    labor_rate_hourly: 55,
+    scrap_cost_per_unit: 75,
+    variance_threshold_pct: 15,
+    pattern_min_orders: 3,
+  };
 }
