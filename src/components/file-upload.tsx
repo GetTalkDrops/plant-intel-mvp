@@ -59,12 +59,9 @@ export function FileUpload() {
       {uploadState === "tier-preview" && mappingData && (
         <TierPreview
           mappedFields={
-            // FIXED: Added proper type annotations
-            (
-              mappingData.finalMappings?.map(
-                (m: FieldMapping) => m.targetField
-              ) || []
-            ).filter((field: string | null): field is string => field !== null)
+            mappingData.finalMappings
+              ?.map((m) => m.targetField)
+              .filter((field): field is string => field !== null) || []
           }
           analysisConfig={mappingData.analysisConfig}
           onBack={() => {

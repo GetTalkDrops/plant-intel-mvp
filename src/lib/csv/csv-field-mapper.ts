@@ -531,7 +531,7 @@ export function matchHeaderToField(
 
 export interface MappingResult {
   sourceColumn: string;
-  targetField: string;
+  targetField: string | null;
   confidence: number;
   matchType: string;
   dataType: string;

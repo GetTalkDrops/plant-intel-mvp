@@ -51,7 +51,7 @@ async def analyze_auto(request: AnalyzeRequest):
         cost_results = cost_analyzer.analyze(
             facility_id=request.facility_id,
             config={
-                'labor_rate_hourly': config.get('labor_rate_hourly', 200),
+                'labor_rate_hourly': config.get('labor_rate_hourly', 55),
                 'scrap_cost_per_unit': config.get('scrap_cost_per_unit', 75),
                 'variance_threshold_pct': config.get('variance_threshold_pct', 15),
                 'min_variance_amount': config.get('min_variance_amount', 1000),
@@ -71,7 +71,7 @@ async def analyze_auto(request: AnalyzeRequest):
             equipment_results = equipment_predictor.analyze(
                 facility_id=request.facility_id,
                 config={
-                    'labor_rate_hourly': config.get('labor_rate_hourly', 200),
+                    'labor_rate_hourly': config.get('labor_rate_hourly', 55),
                     'scrap_cost_per_unit': config.get('scrap_cost_per_unit', 75),
                     'pattern_min_orders': config.get('pattern_min_orders', 3),
                     'excluded_machines': config.get('excluded_machines', []),
@@ -98,7 +98,7 @@ async def analyze_auto(request: AnalyzeRequest):
             quality_results = quality_analyzer.analyze(
                 facility_id=request.facility_id,
                 config={
-                    'labor_rate_hourly': config.get('labor_rate_hourly', 200),
+                    'labor_rate_hourly': config.get('labor_rate_hourly', 55),
                     'scrap_cost_per_unit': config.get('scrap_cost_per_unit', 75),
                     'pattern_min_orders': config.get('pattern_min_orders', 3),
                     'quality_min_issue_rate_pct': config.get('quality_min_issue_rate_pct', 10),
@@ -120,7 +120,7 @@ async def analyze_auto(request: AnalyzeRequest):
             efficiency_results = efficiency_analyzer.analyze(
                 facility_id=request.facility_id,
                 config={
-                    'labor_rate_hourly': config.get('labor_rate_hourly', 200),
+                    'labor_rate_hourly': config.get('labor_rate_hourly', 55),
                     'scrap_cost_per_unit': config.get('scrap_cost_per_unit', 75),
                 }
             )

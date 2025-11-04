@@ -501,7 +501,7 @@ function FieldSelector({
     <select
       value={value || "none"}
       onChange={(e) => {
-        const v: string = e.target.value;
+        const v = e.target.value;
         onChange(v === "none" ? null : v);
       }}
       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"

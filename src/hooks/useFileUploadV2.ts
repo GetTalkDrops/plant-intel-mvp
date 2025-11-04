@@ -4,15 +4,12 @@
  */
 
 import { useState } from "react";
+import { DEFAULT_ANALYSIS_CONFIG } from "@/lib/csv/csv-config-defaults";
+import type { AnalysisConfig } from "@/lib/csv/csv-config-defaults";
 
 // ==================== TYPE DEFINITIONS ====================
 
-export interface AnalysisConfig {
-  labor_rate_hourly: number;
-  scrap_cost_per_unit: number;
-  variance_threshold_pct: number;
-  pattern_min_orders: number;
-}
+export type { AnalysisConfig };
 
 export interface FieldMapping {
   sourceColumn: string;
@@ -313,10 +310,5 @@ async function checkForTemplate(
 }
 
 function getDefaultConfig(): AnalysisConfig {
-  return {
-    labor_rate_hourly: 55,
-    scrap_cost_per_unit: 75,
-    variance_threshold_pct: 15,
-    pattern_min_orders: 3,
-  };
+  return DEFAULT_ANALYSIS_CONFIG;
 }

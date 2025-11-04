@@ -12,14 +12,7 @@ import { csvStorageService } from "@/lib/csv/csv-storage";
 import { isDemoAccount, DEMO_FACILITY_ID } from "@/lib/crm/demo-account";
 import { buildInsightCards } from "@/lib/analytics/insight-builder";
 import { detectDataTier, type MappingResult } from "@/lib/csv/csv-field-mapper";
-
-// NEW: Type for analysis configuration
-interface AnalysisConfig {
-  labor_rate_hourly: number;
-  scrap_cost_per_unit: number;
-  variance_threshold_pct: number;
-  pattern_min_orders: number;
-}
+import { DEFAULT_ANALYSIS_CONFIG, type AnalysisConfig } from "@/lib/csv/csv-config-defaults";
 
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
