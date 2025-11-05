@@ -204,22 +204,12 @@ export function UnifiedChatInterface() {
     finalMappings: any[],
     config: any
   ) => {
-    console.log("=== handleMappingComplete START ===");
-    console.log("templateName:", templateName);
-    console.log("finalMappings count:", finalMappings?.length);
-    console.log("config:", config);
-    console.log("mappingData exists:", !!mappingData);
-    console.log("mappingData.file exists:", !!mappingData?.file);
-    console.log("mappingData.headers exists:", !!mappingData?.headers);
-
     try {
       if (!mappingData?.file || !mappingData?.headers) {
-        console.error("MISSING DATA - mappingData:", mappingData);
         throw new Error("No file data available");
       }
 
       if (!finalMappings || finalMappings.length === 0) {
-        console.error("MISSING MAPPINGS - finalMappings:", finalMappings);
         throw new Error("No field mappings configured");
       }
 
@@ -297,10 +287,7 @@ export function UnifiedChatInterface() {
         throw new Error(errorData.error || "Upload failed");
       }
 
-      console.log("=== UPLOAD SUCCESSFUL ===");
-
-      // Success - update state and show message
-      handleMappingsConfirmed(finalMappings, config, templateName);
+      // Success - show message and clean up
       setMessages((prev) => [
         ...prev,
         createAssistantMessage(
@@ -308,19 +295,11 @@ export function UnifiedChatInterface() {
         ),
       ]);
 
-      // Clean up
+      // Clean up state
       setEditedMappings([]);
       setEditedConfig(null);
       handleCancel();
-
-      console.log("=== handleMappingComplete END - SUCCESS ===");
     } catch (err) {
-      console.error("=== UPLOAD ERROR CAUGHT ===", err);
-      console.error("Error details:", {
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined
-      });
-
       setMessages((prev) => [
         ...prev,
         createSystemMessage(
@@ -328,8 +307,6 @@ export function UnifiedChatInterface() {
         ),
       ]);
       handleCancel();
-
-      console.log("=== handleMappingComplete END - ERROR ===");
     }
   };
 
@@ -587,22 +564,8 @@ export function UnifiedChatInterface() {
                 onMappingsChange={setEditedMappings}
                 onConfigChange={setEditedConfig}
                 onContinue={async (templateName) => {
-                  console.log("=== onContinue called (empty view) ===");
-                  console.log("templateName:", templateName);
-                  console.log("editedMappings:", editedMappings);
-                  console.log("mappingData.initialMappings:", mappingData.initialMappings);
-                  console.log("editedConfig:", editedConfig);
-                  console.log("mappingData.analysisConfig:", mappingData.analysisConfig);
-
                   const finalMappings = editedMappings.length > 0 ? editedMappings : mappingData.initialMappings;
                   const config = editedConfig || mappingData.analysisConfig!;
-
-                  console.log("Calling handleMappingComplete with:", {
-                    templateName,
-                    finalMappingsCount: finalMappings?.length,
-                    hasConfig: !!config
-                  });
-
                   await handleMappingComplete(templateName, finalMappings, config);
                 }}
                 onCancel={handleUploadCancel}
@@ -720,22 +683,8 @@ export function UnifiedChatInterface() {
               onMappingsChange={setEditedMappings}
               onConfigChange={setEditedConfig}
               onContinue={async (templateName) => {
-                console.log("=== onContinue called (chat view) ===");
-                console.log("templateName:", templateName);
-                console.log("editedMappings:", editedMappings);
-                console.log("mappingData.initialMappings:", mappingData.initialMappings);
-                console.log("editedConfig:", editedConfig);
-                console.log("mappingData.analysisConfig:", mappingData.analysisConfig);
-
                 const finalMappings = editedMappings.length > 0 ? editedMappings : mappingData.initialMappings;
                 const config = editedConfig || mappingData.analysisConfig!;
-
-                console.log("Calling handleMappingComplete with:", {
-                  templateName,
-                  finalMappingsCount: finalMappings?.length,
-                  hasConfig: !!config
-                });
-
                 await handleMappingComplete(templateName, finalMappings, config);
               }}
               onCancel={handleUploadCancel}
