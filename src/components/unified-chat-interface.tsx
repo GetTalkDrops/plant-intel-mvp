@@ -4,31 +4,25 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
-import CsvMappingModal from "./csv-mapping-modal";
+import { CSVMappingTable, TemplateConfirmation } from "./csv";
 import {
   processManufacturingQuery,
   type ManufacturingInsight,
 } from "@/lib/analytics/chat-processor";
-import { type ColumnMapping } from "@/lib/csv/csvMapper";
 import { useUser } from "@clerk/nextjs";
 import { SavingsTracker } from "./savings-tracker";
 import { useSearchParams } from "next/navigation";
 import { PlantIntelLogo } from "./plant-intel-logo";
-
-// Phase 1: Session management hook
 import { useSession, type ChatMessage } from "@/hooks/useSession";
-
-// Phase 2: Message utility functions
 import {
   createUserMessage,
   createAssistantMessage,
   createSystemMessage,
 } from "@/lib/utils/messageUtils";
-
-// Phase 3: File upload hook
-import { useFileUpload } from "@/hooks/useFileUpload";
+import { useFileUploadV2 } from "@/hooks/useFileUploadV2";
 
 export function UnifiedChatInterface() {
   const { user } = useUser();
@@ -46,6 +40,9 @@ export function UnifiedChatInterface() {
   const [queryCount, setQueryCount] = useState(0);
   const [savingsTrackerDismissed, setSavingsTrackerDismissed] = useState(false);
   const [landingChatInput, setLandingChatInput] = useState("");
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -67,28 +64,56 @@ export function UnifiedChatInterface() {
   );
 
   const {
-    showMappingModal,
-    pendingMapping,
-    isDragOver,
-    handleFileUpload,
-    handleMappingConfirm,
-    handleMappingCancel,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-    handleFileInput,
-  } = useFileUpload({
-    userEmail,
-    setMessages,
-    setIsLoading,
-    setCumulativeSavings,
-  });
+    uploadState,
+    mappingData,
+    templateMatch,
+    error,
+    handleFileSelected,
+    handleUseTemplate,
+    handleEditTemplate,
+    handleStartFresh,
+    handleMappingsConfirmed,
+    handleBackToMapping,
+    handleTierConfirmed,
+    handleCancel,
+  } = useFileUploadV2();
 
   const isEmpty = messages.length === 0 && !isLoading;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (uploadState === "complete") {
+      setMessages((prev) => [
+        ...prev,
+        createAssistantMessage(
+          "Your data has been uploaded successfully and is being analyzed. I'll show you the insights shortly."
+        ),
+      ]);
+      handleCancel();
+    }
+  }, [uploadState, handleCancel, setMessages]);
+
+  useEffect(() => {
+    if (error) {
+      setMessages((prev) => [
+        ...prev,
+        createSystemMessage(
+          `Upload error: ${error}. Please try again or contact support if the issue persists.`
+        ),
+      ]);
+    }
+  }, [error, setMessages]);
+
+  useEffect(() => {
+    if (uploadState === "template-confirmation" && templateMatch) {
+      setToastMessage(`Using saved template: ${templateMatch.name}`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000);
+    }
+  }, [uploadState, templateMatch]);
 
   const handleSendMessage = async (message: string) => {
     const userMessage = createUserMessage(message);
@@ -132,6 +157,35 @@ export function UnifiedChatInterface() {
       handleSendMessage(landingChatInput.trim());
       setLandingChatInput("");
     }
+  };
+
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await handleFileSelected(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      await handleFileSelected(file);
+    }
+  };
+
+  const handleFileUpload = async (file: File) => {
+    await handleFileSelected(file);
   };
 
   if (isEmpty) {
@@ -323,19 +377,72 @@ export function UnifiedChatInterface() {
           </div>
         </div>
 
-        <CsvMappingModal
-          usingSavedMapping={pendingMapping?.usingSavedMapping || false}
-          savedFileName={pendingMapping?.savedFileName || ""}
-          isOpen={showMappingModal}
-          fileName={pendingMapping?.fileName || ""}
-          mappings={pendingMapping?.mappings || []}
-          unmappedColumns={pendingMapping?.unmappedColumns || []}
-          dataTier={pendingMapping?.dataTier}
-          validation={pendingMapping?.validation}
-          confidence={pendingMapping?.confidence}
-          onConfirm={handleMappingConfirm}
-          onCancel={handleMappingCancel}
-        />
+        {showToast && (
+          <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2">
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            <span className="text-sm">{toastMessage}</span>
+          </div>
+        )}
+
+        <Dialog
+          open={uploadState === "template-confirmation"}
+          onOpenChange={(open) => {
+            if (!open) handleCancel();
+          }}
+        >
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            {templateMatch && (
+              <TemplateConfirmation
+                templateName={templateMatch.name}
+                mappings={templateMatch.mappings}
+                config={templateMatch.analysisConfig}
+                onUseTemplate={handleUseTemplate}
+                onEditTemplate={handleEditTemplate}
+                onStartFresh={handleStartFresh}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={uploadState === "mapping"}
+          onOpenChange={(open) => {
+            if (!open) handleCancel();
+          }}
+        >
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+            {mappingData && (
+              <CSVMappingTable
+                csvHeaders={mappingData.headers}
+                sampleRows={mappingData.sampleRows}
+                initialMappings={mappingData.initialMappings}
+                defaultConfig={mappingData.analysisConfig}
+                templateName={mappingData.templateName}
+                usingSavedTemplate={!!mappingData.templateName}
+                onMappingsChange={() => {}}
+                onConfigChange={() => {}}
+                onContinue={(templateName) => {
+                  const finalMappings = mappingData.initialMappings;
+                  const config = mappingData.analysisConfig!;
+                  handleMappingsConfirmed(finalMappings, config, templateName);
+                }}
+                onCancel={handleCancel}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
@@ -343,7 +450,6 @@ export function UnifiedChatInterface() {
   return (
     <div className="flex flex-col h-full bg-gray-50">
       <div className="flex-1 overflow-y-auto">
-        {/* CRITICAL: Add w-full and overflow-x-hidden to prevent horizontal scroll */}
         <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 py-3 sm:py-6 overflow-x-hidden">
           {cumulativeSavings > 0 && !savingsTrackerDismissed && (
             <SavingsTracker
@@ -382,19 +488,72 @@ export function UnifiedChatInterface() {
         placeholder="Ask about production performance, costs, quality, or equipment..."
       />
 
-      <CsvMappingModal
-        usingSavedMapping={pendingMapping?.usingSavedMapping || false}
-        savedFileName={pendingMapping?.savedFileName || ""}
-        isOpen={showMappingModal}
-        fileName={pendingMapping?.fileName || ""}
-        mappings={pendingMapping?.mappings || []}
-        unmappedColumns={pendingMapping?.unmappedColumns || []}
-        dataTier={pendingMapping?.dataTier}
-        validation={pendingMapping?.validation}
-        confidence={pendingMapping?.confidence}
-        onConfirm={handleMappingConfirm}
-        onCancel={handleMappingCancel}
-      />
+      {showToast && (
+        <div className="fixed bottom-20 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2">
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+          <span className="text-sm">{toastMessage}</span>
+        </div>
+      )}
+
+      <Dialog
+        open={uploadState === "template-confirmation"}
+        onOpenChange={(open) => {
+          if (!open) handleCancel();
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {templateMatch && (
+            <TemplateConfirmation
+              templateName={templateMatch.name}
+              mappings={templateMatch.mappings}
+              config={templateMatch.analysisConfig}
+              onUseTemplate={handleUseTemplate}
+              onEditTemplate={handleEditTemplate}
+              onStartFresh={handleStartFresh}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={uploadState === "mapping"}
+        onOpenChange={(open) => {
+          if (!open) handleCancel();
+        }}
+      >
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          {mappingData && (
+            <CSVMappingTable
+              csvHeaders={mappingData.headers}
+              sampleRows={mappingData.sampleRows}
+              initialMappings={mappingData.initialMappings}
+              defaultConfig={mappingData.analysisConfig}
+              templateName={mappingData.templateName}
+              usingSavedTemplate={!!mappingData.templateName}
+              onMappingsChange={() => {}}
+              onConfigChange={() => {}}
+              onContinue={(templateName) => {
+                const finalMappings = mappingData.initialMappings;
+                const config = mappingData.analysisConfig!;
+                handleMappingsConfirmed(finalMappings, config, templateName);
+              }}
+              onCancel={handleCancel}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
