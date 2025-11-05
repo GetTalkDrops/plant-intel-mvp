@@ -97,18 +97,18 @@ export async function POST(request: NextRequest) {
 // ==================== GET ALL TEMPLATES ====================
 // GET /api/csv-templates
 export async function GET(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const user = await currentUser();
-  const userEmail = user?.emailAddresses[0]?.emailAddress;
-  if (!userEmail) {
-    return NextResponse.json({ error: "Email not found" }, { status: 400 });
-  }
-
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const user = await currentUser();
+    const userEmail = user?.emailAddresses[0]?.emailAddress;
+    if (!userEmail) {
+      return NextResponse.json({ error: "Email not found" }, { status: 400 });
+    }
+
     const { data, error } = await supabase
       .from("csv_mappings")
       .select("*")
@@ -116,21 +116,21 @@ export async function GET(request: NextRequest) {
       .order("last_used_at", { ascending: false, nullsFirst: false });
 
     if (error) {
-      console.error("Template fetch error:", error);
+      console.error("Supabase template fetch error:", error);
       return NextResponse.json(
-        { error: "Failed to fetch templates" },
+        { error: "Failed to fetch templates", details: error.message },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      templates: data,
+      templates: data || [],
     });
   } catch (error) {
-    console.error("Template fetch error:", error);
+    console.error("Template fetch exception:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
