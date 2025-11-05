@@ -199,6 +199,115 @@ export function UnifiedChatInterface() {
     handleCancel();
   };
 
+  const handleMappingComplete = async (
+    templateName: string,
+    finalMappings: any[],
+    config: any
+  ) => {
+    try {
+      if (!mappingData?.file || !mappingData?.headers) {
+        throw new Error("No file data available");
+      }
+
+      const file = mappingData.file;
+      const headers = mappingData.headers;
+
+      // Show processing message
+      setMessages((prev) => [
+        ...prev,
+        createSystemMessage("Processing your data and starting analysis..."),
+      ]);
+
+      // Helper function to map CSV data
+      const mapCSVData = (file: File, mappings: any[]) => {
+        return new Promise<any[]>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const text = e.target?.result as string;
+            const lines = text.split("\n").filter((line) => line.trim());
+            const csvHeaders = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
+            const mappedData: any[] = [];
+
+            for (let i = 1; i < lines.length; i++) {
+              const values = lines[i].split(",").map((v) => v.trim().replace(/"/g, ""));
+              const row: any = {};
+              mappings.forEach((mapping) => {
+                if (mapping.targetField) {
+                  const sourceIndex = csvHeaders.indexOf(mapping.sourceColumn);
+                  if (sourceIndex !== -1) {
+                    row[mapping.targetField] = values[sourceIndex];
+                  }
+                }
+              });
+              if (Object.keys(row).length > 0) {
+                mappedData.push(row);
+              }
+            }
+            resolve(mappedData);
+          };
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsText(file);
+        });
+      };
+
+      // Helper function to hash file
+      const hashFile = async (file: File) => {
+        const buffer = await file.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      };
+
+      // Map CSV data
+      const mappedData = await mapCSVData(file, finalMappings);
+      const headerSignature = JSON.stringify(headers);
+      const fileHash = await hashFile(file);
+
+      // Upload with configuration
+      const response = await fetch("/api/upload-csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mappedData,
+          mapping: finalMappings,
+          analysisConfig: config,
+          fileName: file.name,
+          headerSignature,
+          fileHash,
+          mappingName: templateName,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      // Success - update state and show message
+      handleMappingsConfirmed(finalMappings, config, templateName);
+      setMessages((prev) => [
+        ...prev,
+        createAssistantMessage(
+          "Your data has been uploaded successfully and is being analyzed. I'll show you the insights shortly."
+        ),
+      ]);
+
+      // Clean up
+      setEditedMappings([]);
+      setEditedConfig(null);
+      handleCancel();
+    } catch (err) {
+      console.error("Upload error:", err);
+      setMessages((prev) => [
+        ...prev,
+        createSystemMessage(
+          `Upload error: ${err instanceof Error ? err.message : "Unknown error"}. Please try again.`
+        ),
+      ]);
+      handleCancel();
+    }
+  };
+
   if (isEmpty) {
     return (
       <>
@@ -455,10 +564,7 @@ export function UnifiedChatInterface() {
                 onContinue={async (templateName) => {
                   const finalMappings = editedMappings.length > 0 ? editedMappings : mappingData.initialMappings;
                   const config = editedConfig || mappingData.analysisConfig!;
-                  handleMappingsConfirmed(finalMappings, config, templateName);
-                  setTimeout(async () => {
-                    await handleTierConfirmed();
-                  }, 100);
+                  await handleMappingComplete(templateName, finalMappings, config);
                 }}
                 onCancel={handleUploadCancel}
               />
@@ -577,10 +683,7 @@ export function UnifiedChatInterface() {
               onContinue={async (templateName) => {
                 const finalMappings = editedMappings.length > 0 ? editedMappings : mappingData.initialMappings;
                 const config = editedConfig || mappingData.analysisConfig!;
-                handleMappingsConfirmed(finalMappings, config, templateName);
-                setTimeout(async () => {
-                  await handleTierConfirmed();
-                }, 100);
+                await handleMappingComplete(templateName, finalMappings, config);
               }}
               onCancel={handleUploadCancel}
             />
