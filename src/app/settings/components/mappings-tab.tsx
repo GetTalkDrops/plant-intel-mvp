@@ -5,15 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Trash2, Calendar, Pencil, Check, X, Edit } from "lucide-react";
-import { EditMappingModal } from "@/components/edit-mapping-modal";
-import { type ColumnMapping } from "@/lib/csv/csvMapper";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Trash2, Calendar, Pencil, Check, X, Edit, DollarSign, Percent, TrendingUp } from "lucide-react";
+import { CSVMappingTable } from "@/components/csv";
+import { type AnalysisConfig, DEFAULT_ANALYSIS_CONFIG } from "@/lib/csv/csv-config-defaults";
 
 interface MappingField {
   sourceColumn: string;
-  targetField: string;
+  targetField: string | null;
   dataType: string;
   confidence?: number;
+  matchType?: string;
+  required?: boolean;
 }
 
 interface CsvMapping {
@@ -21,6 +24,7 @@ interface CsvMapping {
   user_email: string;
   header_signature: string;
   mapping_config: MappingField[];
+  analysis_config?: AnalysisConfig;
   name: string;
   created_at: string;
 }
@@ -33,6 +37,8 @@ export function MappingsTab() {
   const [editName, setEditName] = useState("");
   const [editMappingModalOpen, setEditMappingModalOpen] = useState(false);
   const [editingMapping, setEditingMapping] = useState<CsvMapping | null>(null);
+  const [editedMappings, setEditedMappings] = useState<MappingField[]>([]);
+  const [editedConfig, setEditedConfig] = useState<AnalysisConfig>(DEFAULT_ANALYSIS_CONFIG);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -48,26 +54,26 @@ export function MappingsTab() {
 
   async function loadMappings() {
     try {
-      const res = await fetch("/api/csv-mapping/list");
-      if (!res.ok) throw new Error("Failed to load mappings");
+      const res = await fetch("/api/csv-templates");
+      if (!res.ok) throw new Error("Failed to load templates");
       const data = await res.json();
-      setMappings(data.mappings || []);
+      setMappings(data.templates || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load mappings");
+      setError(err instanceof Error ? err.message : "Failed to load templates");
     } finally {
       setLoading(false);
     }
   }
 
   async function deleteMapping(id: string) {
-    if (!confirm("Delete this mapping? This cannot be undone.")) return;
+    if (!confirm("Delete this template? This cannot be undone.")) return;
 
     try {
-      const res = await fetch(`/api/csv-mapping/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete mapping");
+      const res = await fetch(`/api/csv-templates/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete template");
       setMappings(mappings.filter((m) => m.id !== id));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete mapping");
+      alert(err instanceof Error ? err.message : "Failed to delete template");
     }
   }
 
@@ -90,7 +96,7 @@ export function MappingsTab() {
     }
 
     try {
-      const res = await fetch(`/api/csv-mapping/${id}`, {
+      const res = await fetch(`/api/csv-templates/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmedName }),
@@ -110,37 +116,40 @@ export function MappingsTab() {
 
   function openEditMappingModal(mapping: CsvMapping) {
     setEditingMapping(mapping);
+    setEditedMappings(mapping.mapping_config);
+    setEditedConfig(mapping.analysis_config || DEFAULT_ANALYSIS_CONFIG);
     setEditMappingModalOpen(true);
   }
 
   function closeEditMappingModal() {
     setEditMappingModalOpen(false);
     setEditingMapping(null);
+    setEditedMappings([]);
+    setEditedConfig(DEFAULT_ANALYSIS_CONFIG);
   }
 
-  async function handleMappingUpdate(
-    mappingId: string,
-    updatedMappings: ColumnMapping[]
-  ) {
+  async function handleTemplateUpdate(templateName: string) {
+    if (!editingMapping) return;
+
     try {
-      const res = await fetch(`/api/csv-mapping/${mappingId}`, {
+      const mappingsToSave = editedMappings.filter(m => m.targetField !== null);
+
+      const res = await fetch(`/api/csv-templates/${editingMapping.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mapping_config: updatedMappings }),
+        body: JSON.stringify({
+          name: templateName,
+          mapping_config: mappingsToSave,
+          analysis_config: editedConfig,
+        }),
       });
 
-      if (!res.ok) throw new Error("Failed to update mappings");
+      if (!res.ok) throw new Error("Failed to update template");
 
-      setMappings(
-        mappings.map((m) =>
-          m.id === mappingId
-            ? { ...m, mapping_config: updatedMappings as MappingField[] }
-            : m
-        )
-      );
+      await loadMappings();
       closeEditMappingModal();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update mappings");
+      alert(err instanceof Error ? err.message : "Failed to update template");
       throw err;
     }
   }
@@ -255,7 +264,7 @@ export function MappingsTab() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="text-xs sm:text-sm font-medium">
                     Field Mappings:
@@ -267,7 +276,7 @@ export function MappingsTab() {
                     className="text-xs sm:text-sm"
                   >
                     <Edit className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                    Edit Mappings
+                    Edit Template
                   </Button>
                 </div>
                 {mapping.mapping_config.length > 0 ? (
@@ -294,6 +303,32 @@ export function MappingsTab() {
                     No field mappings configured
                   </p>
                 )}
+
+                {mapping.analysis_config && (
+                  <div className="border-t pt-3 mt-3">
+                    <div className="text-xs sm:text-sm font-medium mb-2">
+                      Configuration:
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs sm:text-sm">
+                      <div className="flex items-center gap-1 text-gray-600">
+                        <DollarSign className="w-3 h-3 flex-shrink-0" />
+                        <span>Labor Rate: ${mapping.analysis_config.labor_rate_hourly}/hr</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-gray-600">
+                        <DollarSign className="w-3 h-3 flex-shrink-0" />
+                        <span>Scrap Cost: ${mapping.analysis_config.scrap_cost_per_unit}/unit</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-gray-600">
+                        <Percent className="w-3 h-3 flex-shrink-0" />
+                        <span>Variance Threshold: {mapping.analysis_config.variance_threshold_pct}%</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-gray-600">
+                        <TrendingUp className="w-3 h-3 flex-shrink-0" />
+                        <span>Pattern Min: {mapping.analysis_config.pattern_min_orders} orders</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -301,14 +336,38 @@ export function MappingsTab() {
       </div>
 
       {editingMapping && (
-        <EditMappingModal
-          isOpen={editMappingModalOpen}
-          mappingId={editingMapping.id}
-          mappingName={editingMapping.name}
-          currentMappings={editingMapping.mapping_config as ColumnMapping[]}
-          onConfirm={handleMappingUpdate}
-          onCancel={closeEditMappingModal}
-        />
+        <Dialog
+          open={editMappingModalOpen}
+          onOpenChange={(open) => {
+            if (!open) closeEditMappingModal();
+          }}
+        >
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+            <CSVMappingTable
+              csvHeaders={editingMapping.mapping_config.map(m => m.sourceColumn)}
+              sampleRows={[]}
+              initialMappings={editingMapping.mapping_config.map(m => ({
+                sourceColumn: m.sourceColumn,
+                targetField: m.targetField,
+                confidence: m.confidence || 1.0,
+                matchType: m.matchType || "manual",
+                dataType: m.dataType || "string",
+                required: m.required || false
+              }))}
+              defaultConfig={editingMapping.analysis_config || DEFAULT_ANALYSIS_CONFIG}
+              templateName={editingMapping.name}
+              usingSavedTemplate={true}
+              onMappingsChange={(mappings) => {
+                setEditedMappings(mappings as MappingField[]);
+              }}
+              onConfigChange={(config) => {
+                setEditedConfig(config);
+              }}
+              onContinue={handleTemplateUpdate}
+              onCancel={closeEditMappingModal}
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </>
   );
