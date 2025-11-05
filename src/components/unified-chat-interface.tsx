@@ -43,6 +43,8 @@ export function UnifiedChatInterface() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [editedMappings, setEditedMappings] = useState<any[]>([]);
+  const [editedConfig, setEditedConfig] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -92,6 +94,8 @@ export function UnifiedChatInterface() {
           "Your data has been uploaded successfully and is being analyzed. I'll show you the insights shortly."
         ),
       ]);
+      setEditedMappings([]);
+      setEditedConfig(null);
       handleCancel();
     }
   }, [uploadState, handleCancel, setMessages]);
@@ -186,6 +190,12 @@ export function UnifiedChatInterface() {
 
   const handleFileUpload = async (file: File) => {
     await handleFileSelected(file);
+  };
+
+  const handleUploadCancel = () => {
+    setEditedMappings([]);
+    setEditedConfig(null);
+    handleCancel();
   };
 
   if (isEmpty) {
@@ -399,10 +409,10 @@ export function UnifiedChatInterface() {
         <Dialog
           open={uploadState === "template-confirmation"}
           onOpenChange={(open) => {
-            if (!open) handleCancel();
+            if (!open) handleUploadCancel();
           }}
         >
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
             {templateMatch && (
               <TemplateConfirmation
                 templateName={templateMatch.name}
@@ -419,10 +429,10 @@ export function UnifiedChatInterface() {
         <Dialog
           open={uploadState === "mapping"}
           onOpenChange={(open) => {
-            if (!open) handleCancel();
+            if (!open) handleUploadCancel();
           }}
         >
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
             {mappingData && (
               <CSVMappingTable
                 csvHeaders={mappingData.headers}
@@ -431,14 +441,17 @@ export function UnifiedChatInterface() {
                 defaultConfig={mappingData.analysisConfig}
                 templateName={mappingData.templateName}
                 usingSavedTemplate={!!mappingData.templateName}
-                onMappingsChange={() => {}}
-                onConfigChange={() => {}}
-                onContinue={(templateName) => {
-                  const finalMappings = mappingData.initialMappings;
-                  const config = mappingData.analysisConfig!;
+                onMappingsChange={setEditedMappings}
+                onConfigChange={setEditedConfig}
+                onContinue={async (templateName) => {
+                  const finalMappings = editedMappings.length > 0 ? editedMappings : mappingData.initialMappings;
+                  const config = editedConfig || mappingData.analysisConfig!;
                   handleMappingsConfirmed(finalMappings, config, templateName);
+                  setTimeout(async () => {
+                    await handleTierConfirmed();
+                  }, 100);
                 }}
-                onCancel={handleCancel}
+                onCancel={handleUploadCancel}
               />
             )}
           </DialogContent>
@@ -510,10 +523,10 @@ export function UnifiedChatInterface() {
       <Dialog
         open={uploadState === "template-confirmation"}
         onOpenChange={(open) => {
-          if (!open) handleCancel();
+          if (!open) handleUploadCancel();
         }}
       >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           {templateMatch && (
             <TemplateConfirmation
               templateName={templateMatch.name}
@@ -530,10 +543,10 @@ export function UnifiedChatInterface() {
       <Dialog
         open={uploadState === "mapping"}
         onOpenChange={(open) => {
-          if (!open) handleCancel();
+          if (!open) handleUploadCancel();
         }}
       >
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           {mappingData && (
             <CSVMappingTable
               csvHeaders={mappingData.headers}
@@ -542,14 +555,17 @@ export function UnifiedChatInterface() {
               defaultConfig={mappingData.analysisConfig}
               templateName={mappingData.templateName}
               usingSavedTemplate={!!mappingData.templateName}
-              onMappingsChange={() => {}}
-              onConfigChange={() => {}}
-              onContinue={(templateName) => {
-                const finalMappings = mappingData.initialMappings;
-                const config = mappingData.analysisConfig!;
+              onMappingsChange={setEditedMappings}
+              onConfigChange={setEditedConfig}
+              onContinue={async (templateName) => {
+                const finalMappings = editedMappings.length > 0 ? editedMappings : mappingData.initialMappings;
+                const config = editedConfig || mappingData.analysisConfig!;
                 handleMappingsConfirmed(finalMappings, config, templateName);
+                setTimeout(async () => {
+                  await handleTierConfirmed();
+                }, 100);
               }}
-              onCancel={handleCancel}
+              onCancel={handleUploadCancel}
             />
           )}
         </DialogContent>
