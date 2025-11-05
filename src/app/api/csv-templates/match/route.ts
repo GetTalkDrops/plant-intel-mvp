@@ -1,7 +1,7 @@
-// src/app/api/csv-templates/route.ts
+// src/app/api/csv-templates/match/route.ts
 /**
- * CSV Template Management API
- * Handles saving and loading templates WITH configuration values
+ * CSV Template Matching API
+ * Finds matching templates based on CSV headers
  */
 
 import { auth, currentUser } from "@clerk/nextjs/server";
@@ -13,8 +13,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ==================== SAVE TEMPLATE ====================
-// POST /api/csv-templates
+// ==================== MATCH TEMPLATE ====================
+// POST /api/csv-templates/match
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
@@ -28,88 +28,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { name, headerSignature, mappings, analysisConfig } =
-      await request.json();
+    const body = await request.json();
+    const { headers } = body;
 
-    // Validation
-    if (!name || !headerSignature || !mappings || !analysisConfig) {
+    if (!headers || !Array.isArray(headers)) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Invalid headers format" },
         { status: 400 }
       );
     }
 
-    if (
-      !analysisConfig.labor_rate_hourly ||
-      !analysisConfig.scrap_cost_per_unit
-    ) {
-      return NextResponse.json(
-        { error: "Configuration must include labor_rate and scrap_cost" },
-        { status: 400 }
-      );
-    }
-
-    // Delete existing template with same name
-    await supabase
-      .from("csv_mappings")
-      .delete()
-      .eq("user_email", userEmail)
-      .eq("name", name);
-
-    // Insert new template
-    const { data, error } = await supabase
-      .from("csv_mappings")
-      .insert({
-        user_email: userEmail,
-        facility_id: 2, // Default facility
-        name,
-        file_name: name,
-        header_signature: headerSignature,
-        mapping_config: mappings,
-        analysis_config: analysisConfig, // Store config with template
-        use_count: 0,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Template save error:", error);
-      return NextResponse.json(
-        { error: "Failed to save template" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      template: data,
-      message: `Template "${name}" saved successfully`,
-    });
-  } catch (error) {
-    console.error("Template save error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
-
-// ==================== GET ALL TEMPLATES ====================
-// GET /api/csv-templates
-export async function GET(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const user = await currentUser();
-  const userEmail = user?.emailAddresses[0]?.emailAddress;
-  if (!userEmail) {
-    return NextResponse.json({ error: "Email not found" }, { status: 400 });
-  }
-
-  try {
-    const { data, error } = await supabase
+    // Fetch all templates for this user
+    const { data: templates, error } = await supabase
       .from("csv_mappings")
       .select("*")
       .eq("user_email", userEmail)
@@ -117,73 +47,41 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("Template fetch error:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch templates" },
-        { status: 500 }
-      );
+      return NextResponse.json({ found: false });
     }
 
-    return NextResponse.json({
-      success: true,
-      templates: data,
-    });
+    if (!templates || templates.length === 0) {
+      return NextResponse.json({ found: false });
+    }
+
+    // Find matching template
+    for (const template of templates) {
+      try {
+        const savedHeaders = JSON.parse(template.header_signature);
+
+        if (savedHeaders.length === headers.length) {
+          const sorted1 = [...savedHeaders].sort();
+          const sorted2 = [...headers].sort();
+          const isExactMatch = sorted1.every((h, i) => h === sorted2[i]);
+
+          if (isExactMatch) {
+            return NextResponse.json({
+              found: true,
+              name: template.name,
+              mappings: template.mapping_config,
+              analysisConfig: template.analysis_config,
+            });
+          }
+        }
+      } catch (e) {
+        console.log("Skipping invalid template:", template.id);
+        continue;
+      }
+    }
+
+    return NextResponse.json({ found: false });
   } catch (error) {
-    console.error("Template fetch error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
-
-// ==================== DELETE TEMPLATE ====================
-// DELETE /api/csv-templates/[id]
-export async function DELETE(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const user = await currentUser();
-  const userEmail = user?.emailAddresses[0]?.emailAddress;
-  if (!userEmail) {
-    return NextResponse.json({ error: "Email not found" }, { status: 400 });
-  }
-
-  try {
-    const url = new URL(request.url);
-    const id = url.pathname.split("/").pop();
-
-    if (!id) {
-      return NextResponse.json(
-        { error: "Template ID required" },
-        { status: 400 }
-      );
-    }
-
-    const { error } = await supabase
-      .from("csv_mappings")
-      .delete()
-      .eq("id", id)
-      .eq("user_email", userEmail); // Security: only delete own templates
-
-    if (error) {
-      console.error("Template delete error:", error);
-      return NextResponse.json(
-        { error: "Failed to delete template" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Template deleted successfully",
-    });
-  } catch (error) {
-    console.error("Template delete error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("Template match error:", error);
+    return NextResponse.json({ found: false });
   }
 }

@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
 import { CSVMappingTable, TemplateConfirmation } from "./csv";
@@ -413,6 +414,10 @@ export function UnifiedChatInterface() {
           }}
         >
           <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+            <VisuallyHidden>
+              <DialogTitle>Template Confirmation</DialogTitle>
+              <DialogDescription>Choose whether to use saved template or start fresh</DialogDescription>
+            </VisuallyHidden>
             {templateMatch && (
               <TemplateConfirmation
                 templateName={templateMatch.name}
@@ -433,6 +438,10 @@ export function UnifiedChatInterface() {
           }}
         >
           <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+            <VisuallyHidden>
+              <DialogTitle>CSV Mapping Configuration</DialogTitle>
+              <DialogDescription>Map your CSV columns to system fields and configure analysis settings</DialogDescription>
+            </VisuallyHidden>
             {mappingData && (
               <CSVMappingTable
                 csvHeaders={mappingData.headers}
@@ -527,6 +536,10 @@ export function UnifiedChatInterface() {
         }}
       >
         <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+          <VisuallyHidden>
+            <DialogTitle>Template Confirmation</DialogTitle>
+            <DialogDescription>Choose whether to use saved template or start fresh</DialogDescription>
+          </VisuallyHidden>
           {templateMatch && (
             <TemplateConfirmation
               templateName={templateMatch.name}
@@ -547,6 +560,10 @@ export function UnifiedChatInterface() {
         }}
       >
         <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+          <VisuallyHidden>
+            <DialogTitle>CSV Mapping Configuration</DialogTitle>
+            <DialogDescription>Map your CSV columns to system fields and configure analysis settings</DialogDescription>
+          </VisuallyHidden>
           {mappingData && (
             <CSVMappingTable
               csvHeaders={mappingData.headers}
